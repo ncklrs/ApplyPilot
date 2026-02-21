@@ -32,7 +32,7 @@ console = Console()
 # Stage definitions
 # ---------------------------------------------------------------------------
 
-STAGE_ORDER = ("discover", "enrich", "score", "tailor", "cover", "pdf")
+STAGE_ORDER = ("discover", "enrich", "score", "tailor", "cover", "pdf", "landing")
 
 STAGE_META: dict[str, dict] = {
     "discover": {"desc": "Job discovery (JobSpy + Workday + Greenhouse + Lever + Ashby + HN hiring + smart extract)"},
@@ -41,6 +41,7 @@ STAGE_META: dict[str, dict] = {
     "tailor":   {"desc": "Resume tailoring (LLM + validation)"},
     "cover":    {"desc": "Cover letter generation"},
     "pdf":      {"desc": "PDF conversion (tailored resumes + cover letters)"},
+    "landing":  {"desc": "Landing page + voice pitch generation (ElevenLabs TTS)"},
 }
 
 # Upstream dependency: a stage only finishes when its upstream is done AND
@@ -52,6 +53,7 @@ _UPSTREAM: dict[str, str | None] = {
     "tailor":   "score",
     "cover":    "tailor",
     "pdf":      "cover",
+    "landing":  "cover",
 }
 
 
@@ -203,6 +205,17 @@ def _run_pdf() -> dict:
         return {"status": f"error: {e}"}
 
 
+def _run_landing(min_score: int = 7) -> dict:
+    """Stage: Landing page + voice pitch generation."""
+    try:
+        from applypilot.landing import run_landing_pages
+        result = run_landing_pages(min_score=min_score)
+        return {"status": "ok", **result}
+    except Exception as e:
+        log.error("Landing page generation failed: %s", e)
+        return {"status": f"error: {e}"}
+
+
 # Map stage names to their runner functions
 _STAGE_RUNNERS: dict[str, callable] = {
     "discover": _run_discover,
@@ -211,6 +224,7 @@ _STAGE_RUNNERS: dict[str, callable] = {
     "tailor":   _run_tailor,
     "cover":    _run_cover,
     "pdf":      _run_pdf,
+    "landing":  _run_landing,
 }
 
 
@@ -287,6 +301,12 @@ _PENDING_SQL: dict[str, str] = {
         "SELECT COUNT(*) FROM jobs WHERE tailored_resume_path IS NOT NULL "
         "AND tailored_resume_path LIKE '%.txt'"
     ),
+    "landing": (
+        "SELECT COUNT(*) FROM jobs WHERE fit_score >= ? "
+        "AND cover_letter_path IS NOT NULL "
+        "AND full_description IS NOT NULL "
+        "AND (landing_page_path IS NULL OR landing_page_path = '')"
+    ),
 }
 
 # How long to sleep between polling loops in streaming mode (seconds)
@@ -319,7 +339,7 @@ def _run_stage_streaming(
     """
     runner = _STAGE_RUNNERS[stage]
     kwargs: dict = {}
-    if stage in ("tailor", "cover"):
+    if stage in ("tailor", "cover", "landing"):
         kwargs["min_score"] = min_score
     if stage in ("discover", "enrich"):
         kwargs["workers"] = workers
@@ -393,6 +413,8 @@ def _run_sequential(ordered: list[str], min_score: int, workers: int = 1,
                 kwargs["min_score"] = min_score
                 kwargs["use_agent"] = use_agent
                 kwargs["agent_model"] = agent_model
+            if name == "landing":
+                kwargs["min_score"] = min_score
             if name in ("discover", "enrich"):
                 kwargs["workers"] = workers
             result = runner(**kwargs)
@@ -581,6 +603,7 @@ def run_pipeline(
     console.print(f"    Scored:         {final['scored']}")
     console.print(f"    Tailored:       {final['tailored']}")
     console.print(f"    Cover letters:  {final['with_cover_letter']}")
+    console.print(f"    Landing pages:  {final.get('landing_pages', 0)}")
     console.print(f"    Ready to apply: {final['ready_to_apply']}")
     console.print(f"    Applied:        {final['applied']}")
     console.print(f"{'=' * 70}\n")

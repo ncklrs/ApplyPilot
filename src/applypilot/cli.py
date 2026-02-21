@@ -26,7 +26,7 @@ console = Console()
 log = logging.getLogger(__name__)
 
 # Valid pipeline stages (in execution order)
-VALID_STAGES = ("discover", "enrich", "score", "tailor", "cover", "pdf")
+VALID_STAGES = ("discover", "enrich", "score", "tailor", "cover", "pdf", "landing")
 
 
 # ---------------------------------------------------------------------------
@@ -532,6 +532,74 @@ def inbox(
 
     result = update_from_inbox(matches)
     console.print(f"\n[green]Updated {result['updated']} jobs[/green], {result['unmatched']} unmatched")
+
+
+@app.command()
+def landing(
+    min_score: int = typer.Option(7, "--min-score", help="Minimum fit score for page generation."),
+    limit: int = typer.Option(20, "--limit", "-l", help="Max pages to generate."),
+    url: Optional[str] = typer.Option(None, "--url", help="Generate for a specific job URL only."),
+    base_url: str = typer.Option("https://nickjensen.codes", "--base-url", help="Base URL for deployed pages."),
+) -> None:
+    """Generate personalized landing pages with voice pitch for job applications."""
+    _bootstrap()
+
+    from applypilot.config import check_tier
+    check_tier(2, "landing page generation")
+
+    if url:
+        # Single job mode
+        from applypilot.database import get_connection
+        from applypilot.config import load_profile
+        from applypilot.voice import generate_pitch
+        from applypilot.landing import generate_landing_page
+
+        conn = get_connection()
+        row = conn.execute("SELECT * FROM jobs WHERE url = ?", (url,)).fetchone()
+        if not row:
+            console.print(f"[red]Job not found:[/red] {url}")
+            raise typer.Exit(code=1)
+
+        job = dict(zip(row.keys(), row))
+        profile = load_profile()
+
+        console.print(f"[cyan]Generating pitch for {job['title'][:40]} @ {job['site'][:20]}...[/cyan]")
+        pitch = generate_pitch(job, profile)
+
+        console.print(f"[cyan]Generating landing page...[/cyan]")
+        page = generate_landing_page(
+            job,
+            pitch_script=pitch.get("script"),
+            audio_path=pitch.get("audio_path"),
+            profile=profile,
+            base_url=base_url,
+        )
+
+        # Update DB
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "UPDATE jobs SET landing_page_path=?, landing_page_url=?, "
+            "pitch_script=?, pitch_audio_path=?, landing_page_at=? WHERE url=?",
+            (page["path"], page["url"], pitch.get("script"), pitch.get("audio_path"), now, url),
+        )
+        conn.commit()
+
+        console.print(f"\n[green]Landing page generated:[/green]")
+        console.print(f"  File: {page['path']}")
+        console.print(f"  URL:  {page['url']}")
+        if pitch.get("audio_path"):
+            console.print(f"  Audio: {pitch['audio_path']}")
+        return
+
+    # Batch mode
+    from applypilot.landing import run_landing_pages
+
+    result = run_landing_pages(min_score=min_score, limit=limit)
+    console.print(f"\n[bold]Landing Pages[/bold]")
+    console.print(f"  Generated: {result['generated']}")
+    console.print(f"  Errors:    {result['errors']}")
+    console.print(f"  Time:      {result['elapsed']:.1f}s")
 
 
 if __name__ == "__main__":

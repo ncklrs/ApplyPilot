@@ -67,7 +67,7 @@ PARAGRAPH 1 (2-3 sentences): Open with a specific thing YOU built that solves TH
 
 PARAGRAPH 2 (3-4 sentences): Pick 2 achievements from the resume that are MOST relevant to THIS job. Use numbers. Frame as solving their problem, not listing your accomplishments.{projects_hint}{metrics_hint}
 
-PARAGRAPH 3 (1-2 sentences): One specific thing about the company from the job description (a product, a technical challenge, a team structure). Then close. "Happy to walk through any of this in more detail." or "Let's discuss." Nothing else.
+PARAGRAPH 3 (1-2 sentences): One specific thing about the company from the job description (a product, a technical challenge, a team structure). Then close. If a LANDING_PAGE_URL is provided in the job context, end with something like "I put together a quick page at [URL] showing how my work maps to what you're building." Otherwise: "Happy to walk through any of this in more detail." or "Let's discuss." Nothing else.
 
 BANNED WORDS/PHRASES (using ANY of these = instant rejection):
 "resonated", "aligns with", "passionate", "eager", "eager to", "excited to apply", "I am confident",
@@ -122,10 +122,13 @@ def generate_cover_letter(
     Returns:
         The cover letter text (best attempt even if validation failed).
     """
+    landing_url = job.get("landing_page_url") or ""
+    landing_line = f"\nLANDING_PAGE_URL: {landing_url}" if landing_url else ""
     job_text = (
         f"TITLE: {job['title']}\n"
         f"COMPANY: {job['site']}\n"
-        f"LOCATION: {job.get('location', 'N/A')}\n\n"
+        f"LOCATION: {job.get('location', 'N/A')}\n"
+        f"{landing_line}\n"
         f"DESCRIPTION:\n{(job.get('full_description') or '')[:6000]}"
     )
 

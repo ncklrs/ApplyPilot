@@ -186,6 +186,12 @@ _ALL_COLUMNS: dict[str, str] = {
     # Inbox monitor
     "inbox_status": "TEXT",
     "inbox_updated_at": "TEXT",
+    # Landing page / pitch
+    "pitch_script": "TEXT",
+    "pitch_audio_path": "TEXT",
+    "landing_page_path": "TEXT",
+    "landing_page_url": "TEXT",
+    "landing_page_at": "TEXT",
 }
 
 
@@ -311,6 +317,11 @@ def get_stats(conn: sqlite3.Connection | None = None) -> dict:
         "SELECT COUNT(*) FROM jobs "
         "WHERE COALESCE(cover_attempts, 0) >= 5 "
         "AND (cover_letter_path IS NULL OR cover_letter_path = '')"
+    ).fetchone()[0]
+
+    # Landing pages
+    stats["landing_pages"] = conn.execute(
+        "SELECT COUNT(*) FROM jobs WHERE landing_page_path IS NOT NULL"
     ).fetchone()[0]
 
     # Application stage
