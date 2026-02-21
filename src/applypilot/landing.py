@@ -1,22 +1,22 @@
 """Personalized landing page generator for job applications.
 
-Generates a self-contained HTML page per job application — a fancy animated
+Generates a React + Tailwind page per job application — a premium animated
 resume personalized to each company. Includes:
   - Audio pitch with waveform player (ElevenLabs TTS)
   - Pitch text displayed alongside audio
-  - Short bio
-  - Photo (from ~/.applypilot/photo.jpg or photo.png)
-  - LinkedIn and GitHub links
+  - Short bio, photo, LinkedIn/GitHub links
   - Skills match visualization
-  - Relevant experience highlights
+  - Fit score ring with reasoning
+  - Impact metrics + projects
   - Contact CTA
 
-Pages are deployable to nickjensen.codes or subdomain of nickjensen.co.
+Pages deploy to hire.nickjensen.co/{company-slug} via GitHub Pages.
 """
 
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import re
 import time
@@ -98,12 +98,10 @@ def _extract_skills_match(job: dict, profile: dict) -> list[dict]:
 
 
 def _make_slug(job: dict) -> str:
-    """Generate a URL-safe slug from company name and job title."""
+    """Generate a URL-safe slug from company name only."""
     site = job.get("site", "company")
-    title = job.get("title", "role")
-    combined = f"{site}-{title}"
-    slug = re.sub(r"[^\w\s-]", "", combined).strip().lower().replace(" ", "-")
-    return (slug or "company")[:80]
+    slug = re.sub(r"[^\w\s-]", "", site).strip().lower().replace(" ", "-")
+    return (slug or "company")[:60]
 
 
 def generate_landing_page(
@@ -111,13 +109,16 @@ def generate_landing_page(
     pitch_script: str | None = None,
     audio_path: str | None = None,
     profile: dict | None = None,
-    base_url: str = "https://nickjensen.codes",
+    base_url: str = "https://hire.nickjensen.co",
 ) -> dict:
     """Generate a personalized landing page for a job application.
 
+    Uses React (CDN) + Tailwind CSS (CDN) for a polished, animated page.
+    Output is a self-contained HTML file with all assets embedded.
+
     Args:
         job: Job dict from the database.
-        pitch_script: The 30-second pitch text. If None, uses a generic intro.
+        pitch_script: The 30-second pitch text. If None, section is hidden.
         audio_path: Path to MP3 audio file. Embedded as base64 if provided.
         profile: User profile. Loaded from disk if None.
         base_url: Base URL for the deployed page (for canonical links).
@@ -132,8 +133,8 @@ def generate_landing_page(
     experience = profile.get("experience", {})
     resume_facts = profile.get("resume_facts", {})
 
-    name = personal.get("preferred_name") or personal.get("full_name", "")
-    full_name = personal.get("full_name", name)
+    full_name = personal.get("full_name", "")
+    name = personal.get("preferred_name") or full_name
     email = personal.get("email", "")
     linkedin = personal.get("linkedin_url", "")
     github = personal.get("github_url", "")
@@ -163,51 +164,6 @@ def generate_landing_page(
     matched_count = sum(1 for s in skills_data if s["matched"])
     total_skills = len(skills_data)
 
-    # Build skills HTML
-    skills_html = ""
-    for s in skills_data[:20]:  # Cap at 20
-        cls = "skill-tag matched" if s["matched"] else "skill-tag"
-        skills_html += f'<span class="{cls}">{escape(s["skill"])}</span>\n'
-
-    # Photo HTML
-    photo_html = ""
-    if photo_uri:
-        photo_html = f'<img src="{photo_uri}" alt="{escape(name)}" class="hero-photo">'
-    else:
-        initials = "".join(w[0].upper() for w in full_name.split()[:2]) if full_name else "?"
-        photo_html = f'<div class="hero-photo-placeholder">{initials}</div>'
-
-    # Audio player HTML
-    audio_html = ""
-    if audio_uri:
-        audio_html = f"""
-        <div class="audio-section">
-          <div class="audio-label">30-Second Pitch</div>
-          <div class="audio-player">
-            <button class="play-btn" onclick="toggleAudio()" id="playBtn">
-              <svg id="playIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5,3 19,12 5,21"/>
-              </svg>
-              <svg id="pauseIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="display:none">
-                <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
-              </svg>
-            </button>
-            <div class="waveform" id="waveform"></div>
-            <span class="audio-time" id="audioTime">0:00</span>
-          </div>
-          <audio id="pitchAudio" src="{audio_uri}" preload="auto"></audio>
-        </div>"""
-    elif pitch_script:
-        audio_html = '<div class="audio-section"><div class="audio-label">My Pitch</div></div>'
-
-    # Pitch text HTML
-    pitch_html = ""
-    if pitch_script:
-        pitch_html = f"""
-        <div class="pitch-text">
-          <p>{escape(pitch_script)}</p>
-        </div>"""
-
     # Bio
     bio_parts = []
     if years:
@@ -220,626 +176,406 @@ def generate_landing_page(
         bio_parts.append(f"{education}")
     bio_text = ". ".join(bio_parts).capitalize() + "." if bio_parts else ""
 
-    # Projects HTML
-    projects_html = ""
-    if projects:
-        for proj in projects[:4]:
-            projects_html += f"""
-            <div class="project-card animate-in">
-              <div class="project-name">{escape(proj)}</div>
-            </div>"""
+    # Initials fallback
+    initials = "".join(w[0].upper() for w in full_name.split()[:2]) if full_name else "?"
 
-    # Metrics HTML
-    metrics_html = ""
-    if metrics:
-        for m in metrics[:4]:
-            metrics_html += f'<div class="metric-item animate-in">{escape(m)}</div>\n'
+    # Score label
+    if fit_score >= 8:
+        score_label = "Strong Match"
+    elif fit_score >= 6:
+        score_label = "Good Match"
+    else:
+        score_label = "Match"
 
-    # Social links
-    social_links = ""
-    if linkedin:
-        social_links += f'<a href="{escape(linkedin)}" class="social-link" target="_blank" rel="noopener">LinkedIn</a>\n'
-    if github:
-        social_links += f'<a href="{escape(github)}" class="social-link" target="_blank" rel="noopener">GitHub</a>\n'
-    if portfolio:
-        social_links += f'<a href="{escape(portfolio)}" class="social-link" target="_blank" rel="noopener">Portfolio</a>\n'
+    # Build page data as JSON for React to consume
+    page_data = {
+        "name": name,
+        "fullName": full_name,
+        "initials": initials,
+        "email": email,
+        "linkedin": linkedin,
+        "github": github,
+        "portfolio": portfolio,
+        "bio": bio_text,
+        "targetRole": target_role.title() if target_role else "",
+        "years": years,
+        "jobTitle": job_title,
+        "company": company,
+        "location": location,
+        "fitScore": fit_score,
+        "scoreLabel": score_label,
+        "scoreReasoning": (score_reasoning or "").split("\n")[0][:200],
+        "skills": skills_data[:20],
+        "matchedSkills": matched_count,
+        "totalSkills": total_skills,
+        "projects": projects[:4],
+        "metrics": metrics[:4],
+        "pitchScript": pitch_script,
+        "photoUri": photo_uri,
+        "audioUri": audio_uri,
+    }
 
-    # Score visualization
-    score_color = "#10b981" if fit_score >= 7 else ("#f59e0b" if fit_score >= 5 else "#64748b")
-    score_pct = fit_score * 10
+    # Escape for safe embedding in <script> tag
+    data_json = json.dumps(page_data, ensure_ascii=True)
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{escape(name)} for {escape(job_title)} at {escape(company)}</title>
-<meta name="description" content="{escape(name)} — personalized application for {escape(job_title)} at {escape(company)}">
+<title>{escape(full_name)} for {escape(job_title)} at {escape(company)}</title>
+<meta name="description" content="{escape(full_name)} &mdash; personalized application for {escape(job_title)} at {escape(company)}">
 <link rel="canonical" href="{escape(page_url)}">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {{
+  theme: {{
+    extend: {{
+      colors: {{
+        bg: '#0a0f1a',
+        surface: '#111827',
+        surface2: '#1e293b',
+        border: '#1e293b',
+        dim: '#94a3b8',
+        muted: '#64748b',
+        accent: '#60a5fa',
+        accentGlow: 'rgba(96,165,250,0.2)',
+        green: '#10b981',
+        greenDim: 'rgba(16,185,129,0.2)',
+      }},
+      fontFamily: {{
+        sans: ['-apple-system','BlinkMacSystemFont','Segoe UI','system-ui','sans-serif'],
+      }},
+    }}
+  }}
+}}
+</script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
-  :root {{
-    --bg: #0a0f1a;
-    --surface: #111827;
-    --surface2: #1e293b;
-    --border: #1e293b;
-    --text: #e2e8f0;
-    --text-dim: #94a3b8;
-    --text-muted: #64748b;
-    --accent: #60a5fa;
-    --accent-glow: #60a5fa33;
-    --green: #10b981;
-    --green-dim: #10b98133;
-  }}
-
-  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-
-  body {{
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.6;
-    overflow-x: hidden;
-  }}
-
-  /* Animated gradient background */
+  body {{ background: #0a0f1a; margin: 0; }}
   body::before {{
     content: '';
     position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
+    inset: 0;
     background:
-      radial-gradient(ellipse at 20% 20%, #1e3a5f22 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 80%, #10b98111 0%, transparent 50%),
-      radial-gradient(ellipse at 50% 50%, #60a5fa08 0%, transparent 70%);
+      radial-gradient(ellipse at 20% 20%, rgba(30,58,95,0.13) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(16,185,129,0.07) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, rgba(96,165,250,0.03) 0%, transparent 70%);
     pointer-events: none;
     z-index: 0;
   }}
-
-  .container {{
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 2rem 1.5rem;
-    position: relative;
-    z-index: 1;
+  .fade-in {{ opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease-out, transform 0.7s ease-out; }}
+  .fade-in.visible {{ opacity: 1; transform: translateY(0); }}
+  .glass {{
+    background: rgba(17,24,39,0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(30,41,59,0.6);
   }}
-
-  /* Hero Section */
-  .hero {{
-    text-align: center;
-    padding: 3rem 0 2rem;
-  }}
-
-  .hero-photo {{
-    width: 120px;
-    height: 120px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 3px solid var(--accent);
-    box-shadow: 0 0 30px var(--accent-glow);
-    margin-bottom: 1.5rem;
-  }}
-
-  .hero-photo-placeholder {{
-    width: 120px;
-    height: 120px;
-    border-radius: 50%;
-    background: var(--surface2);
-    border: 3px solid var(--accent);
-    box-shadow: 0 0 30px var(--accent-glow);
-    margin: 0 auto 1.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 2.5rem;
-    font-weight: 700;
-    color: var(--accent);
-  }}
-
-  .hero-name {{
-    font-size: 2.2rem;
-    font-weight: 700;
-    margin-bottom: 0.3rem;
-    background: linear-gradient(135deg, var(--text), var(--accent));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }}
-
-  .hero-tagline {{
-    font-size: 1.1rem;
-    color: var(--text-dim);
-    margin-bottom: 0.5rem;
-  }}
-
-  .hero-for {{
-    display: inline-block;
-    font-size: 0.85rem;
-    color: var(--green);
-    background: var(--green-dim);
-    padding: 0.3rem 1rem;
-    border-radius: 20px;
-    font-weight: 500;
-  }}
-
-  /* Social links row */
-  .social-row {{
-    display: flex;
-    justify-content: center;
-    gap: 0.75rem;
-    margin-top: 1.5rem;
-  }}
-
-  .social-link {{
-    color: var(--accent);
-    text-decoration: none;
-    font-size: 0.85rem;
-    padding: 0.4rem 1rem;
-    border: 1px solid var(--accent);
-    border-radius: 8px;
-    transition: all 0.2s;
-  }}
-
-  .social-link:hover {{
-    background: var(--accent);
-    color: var(--bg);
-  }}
-
-  /* Section cards */
-  .section {{
-    background: var(--surface);
-    border-radius: 16px;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-    border: 1px solid var(--border);
-    transition: transform 0.2s, box-shadow 0.2s;
-  }}
-
-  .section:hover {{
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px #00000044;
-  }}
-
-  .section-label {{
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-muted);
-    margin-bottom: 0.75rem;
-  }}
-
-  /* Audio player */
-  .audio-section {{
-    margin-bottom: 0.75rem;
-  }}
-
-  .audio-label {{
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-muted);
-    margin-bottom: 0.5rem;
-  }}
-
-  .audio-player {{
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    background: var(--bg);
-    border-radius: 12px;
-    padding: 0.75rem 1rem;
-  }}
-
-  .play-btn {{
-    background: var(--accent);
-    border: none;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    color: var(--bg);
-    flex-shrink: 0;
-    transition: transform 0.15s, box-shadow 0.15s;
-  }}
-
-  .play-btn:hover {{
-    transform: scale(1.1);
-    box-shadow: 0 0 16px var(--accent-glow);
-  }}
-
-  .waveform {{
-    flex: 1;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-  }}
-
-  .waveform .bar {{
+  .waveform-bar {{
     width: 3px;
-    background: var(--accent);
     border-radius: 2px;
-    transition: height 0.15s;
-    opacity: 0.4;
+    background: #60a5fa;
+    opacity: 0.3;
+    transition: height 0.15s, opacity 0.15s;
   }}
-
-  .waveform .bar.active {{
-    opacity: 1;
-  }}
-
-  .audio-time {{
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    font-variant-numeric: tabular-nums;
-    min-width: 3rem;
-    text-align: right;
-  }}
-
-  /* Pitch text */
-  .pitch-text {{
-    margin-top: 0.75rem;
-  }}
-
-  .pitch-text p {{
-    font-size: 0.95rem;
-    color: var(--text-dim);
-    font-style: italic;
-    line-height: 1.7;
-    border-left: 3px solid var(--accent);
-    padding-left: 1rem;
-  }}
-
-  /* Bio */
-  .bio-text {{
-    font-size: 0.95rem;
-    line-height: 1.7;
-    color: var(--text);
-  }}
-
-  /* Skills */
-  .skills-header {{
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.75rem;
-  }}
-
-  .skills-match-count {{
-    font-size: 0.8rem;
-    color: var(--green);
-    font-weight: 600;
-  }}
-
-  .skills-grid {{
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-  }}
-
-  .skill-tag {{
-    font-size: 0.78rem;
-    padding: 0.25rem 0.65rem;
-    border-radius: 6px;
-    background: var(--surface2);
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    transition: all 0.2s;
-  }}
-
-  .skill-tag.matched {{
-    background: var(--green-dim);
-    color: var(--green);
-    border-color: #10b98144;
-    font-weight: 500;
-  }}
-
-  /* Fit score ring */
-  .score-section {{
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-  }}
-
-  .score-ring {{
-    position: relative;
-    width: 80px;
-    height: 80px;
-    flex-shrink: 0;
-  }}
-
-  .score-ring svg {{
-    transform: rotate(-90deg);
-  }}
-
-  .score-ring-bg {{
-    fill: none;
-    stroke: var(--surface2);
-    stroke-width: 6;
-  }}
-
+  .waveform-bar.active {{ opacity: 1; }}
   .score-ring-fill {{
-    fill: none;
-    stroke: {score_color};
-    stroke-width: 6;
-    stroke-linecap: round;
-    stroke-dasharray: 226;
-    stroke-dashoffset: {226 - (226 * score_pct / 100)};
     transition: stroke-dashoffset 1.5s ease-out;
   }}
-
-  .score-ring-text {{
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: {score_color};
+  @keyframes pulse-glow {{
+    0%, 100% {{ box-shadow: 0 0 20px rgba(96,165,250,0.15); }}
+    50% {{ box-shadow: 0 0 35px rgba(96,165,250,0.3); }}
   }}
-
-  .score-details {{
-    flex: 1;
-  }}
-
-  .score-label-text {{
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: 0.25rem;
-  }}
-
-  .score-reasoning {{
-    font-size: 0.82rem;
-    color: var(--text-dim);
-    line-height: 1.5;
-  }}
-
-  /* Projects */
-  .projects-grid {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-  }}
-
-  .project-card {{
-    background: var(--bg);
-    border-radius: 10px;
-    padding: 1rem;
-    border: 1px solid var(--border);
-    transition: border-color 0.2s;
-  }}
-
-  .project-card:hover {{
-    border-color: var(--accent);
-  }}
-
-  .project-name {{
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--text);
-  }}
-
-  /* Metrics */
-  .metrics-grid {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-  }}
-
-  .metric-item {{
-    background: var(--bg);
-    border-radius: 10px;
-    padding: 0.75rem 1rem;
-    font-size: 0.9rem;
-    color: var(--green);
-    font-weight: 500;
-    text-align: center;
-    border: 1px solid var(--green-dim);
-  }}
-
-  /* CTA */
-  .cta-section {{
-    text-align: center;
-    padding: 2rem 0;
-  }}
-
-  .cta-button {{
-    display: inline-block;
-    background: var(--accent);
-    color: var(--bg);
-    padding: 0.8rem 2.5rem;
-    border-radius: 10px;
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 1rem;
-    transition: transform 0.2s, box-shadow 0.2s;
-  }}
-
-  .cta-button:hover {{
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px var(--accent-glow);
-  }}
-
-  .cta-sub {{
-    margin-top: 0.75rem;
-    font-size: 0.82rem;
-    color: var(--text-muted);
-  }}
-
-  /* Footer */
-  .footer {{
-    text-align: center;
-    padding: 2rem 0 1rem;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }}
-
-  /* Animations */
-  .animate-in {{
-    opacity: 0;
-    transform: translateY(20px);
-    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
-  }}
-
-  .animate-in.visible {{
-    opacity: 1;
-    transform: translateY(0);
-  }}
-
-  /* Responsive */
-  @media (max-width: 640px) {{
-    .container {{ padding: 1rem; }}
-    .hero-name {{ font-size: 1.6rem; }}
-    .projects-grid {{ grid-template-columns: 1fr; }}
-    .metrics-grid {{ grid-template-columns: 1fr; }}
-    .score-section {{ flex-direction: column; text-align: center; }}
-  }}
+  .photo-glow {{ animation: pulse-glow 3s ease-in-out infinite; }}
 </style>
 </head>
 <body>
+<div id="root"></div>
 
-<div class="container">
+<script type="text/babel" data-type="module">
+const DATA = {data_json};
 
-  <!-- Hero -->
-  <div class="hero animate-in">
-    {photo_html}
-    <h1 class="hero-name">{escape(full_name)}</h1>
-    <p class="hero-tagline">{escape(target_role.title())}{(' | ' + escape(years) + ' years') if years else ''}</p>
-    <span class="hero-for">for {escape(job_title)} at {escape(company)}</span>
-    <div class="social-row">
-      {social_links}
-      <a href="mailto:{escape(email)}" class="social-link">Email</a>
+const {{ useState, useEffect, useRef, useCallback }} = React;
+
+/* ── Intersection Observer hook ── */
+function useFadeIn() {{
+  const ref = useRef(null);
+  useEffect(() => {{
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {{ if (entry.isIntersecting) {{ el.classList.add('visible'); obs.unobserve(el); }} }},
+      {{ threshold: 0.1 }}
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }}, []);
+  return ref;
+}}
+
+function Section({{ children, className = '' }}) {{
+  const ref = useFadeIn();
+  return (
+    <div ref={{ref}} className={{"fade-in glass rounded-2xl p-6 mb-5 hover:translate-y-[-2px] hover:shadow-xl transition-all duration-200 " + className}}>
+      {{children}}
     </div>
-  </div>
+  );
+}}
 
-  <!-- Pitch (Audio + Text) -->
-  <div class="section animate-in">
-    {audio_html}
-    {pitch_html}
-  </div>
+function SectionLabel({{ children }}) {{
+  return <div className="text-[0.7rem] font-semibold uppercase tracking-widest text-muted mb-3">{{children}}</div>;
+}}
 
-  <!-- Bio -->
-  <div class="section animate-in">
-    <div class="section-label">About</div>
-    <p class="bio-text">{escape(bio_text)}</p>
-  </div>
+/* ── Hero ── */
+function Hero() {{
+  const ref = useFadeIn();
+  return (
+    <div ref={{ref}} className="fade-in text-center pt-12 pb-8">
+      {{DATA.photoUri ? (
+        <img src={{DATA.photoUri}} alt={{DATA.name}}
+          className="w-28 h-28 rounded-full object-cover border-[3px] border-accent photo-glow mx-auto mb-5" />
+      ) : (
+        <div className="w-28 h-28 rounded-full bg-surface2 border-[3px] border-accent photo-glow mx-auto mb-5 flex items-center justify-center text-4xl font-bold text-accent">
+          {{DATA.initials}}
+        </div>
+      )}}
+      <h1 className="text-4xl font-bold mb-1 bg-gradient-to-r from-slate-200 to-accent bg-clip-text text-transparent">
+        {{DATA.fullName}}
+      </h1>
+      <p className="text-lg text-dim mb-2">
+        {{DATA.targetRole}}{{DATA.years ? ` · ${{DATA.years}} years` : ''}}
+      </p>
+      <span className="inline-block text-sm text-green bg-greenDim px-4 py-1 rounded-full font-medium">
+        for {{DATA.jobTitle}} at {{DATA.company}}
+      </span>
 
-  <!-- Fit Score -->
-  <div class="section animate-in">
-    <div class="section-label">Fit Score</div>
-    <div class="score-section">
-      <div class="score-ring">
-        <svg width="80" height="80" viewBox="0 0 80 80">
-          <circle class="score-ring-bg" cx="40" cy="40" r="36"/>
-          <circle class="score-ring-fill" cx="40" cy="40" r="36"/>
-        </svg>
-        <div class="score-ring-text">{fit_score}</div>
+      <div className="flex justify-center gap-3 mt-5">
+        {{DATA.linkedin && <a href={{DATA.linkedin}} target="_blank" rel="noopener"
+          className="text-sm text-accent border border-accent px-4 py-1.5 rounded-lg hover:bg-accent hover:text-bg transition-colors">LinkedIn</a>}}
+        {{DATA.github && <a href={{DATA.github}} target="_blank" rel="noopener"
+          className="text-sm text-accent border border-accent px-4 py-1.5 rounded-lg hover:bg-accent hover:text-bg transition-colors">GitHub</a>}}
+        {{DATA.portfolio && <a href={{DATA.portfolio}} target="_blank" rel="noopener"
+          className="text-sm text-accent border border-accent px-4 py-1.5 rounded-lg hover:bg-accent hover:text-bg transition-colors">Portfolio</a>}}
+        <a href={{"mailto:" + DATA.email}}
+          className="text-sm text-accent border border-accent px-4 py-1.5 rounded-lg hover:bg-accent hover:text-bg transition-colors">Email</a>
       </div>
-      <div class="score-details">
-        <div class="score-label-text">{'Strong Match' if fit_score >= 7 else ('Good Match' if fit_score >= 5 else 'Match')}</div>
-        <p class="score-reasoning">{escape((score_reasoning or '').split(chr(10))[0][:200])}</p>
-      </div>
     </div>
-  </div>
+  );
+}}
 
-  <!-- Skills Match -->
-  <div class="section animate-in">
-    <div class="skills-header">
-      <div class="section-label">Skills</div>
-      <span class="skills-match-count">{matched_count}/{total_skills} match this role</span>
-    </div>
-    <div class="skills-grid">
-      {skills_html}
-    </div>
-  </div>
+/* ── Audio Player ── */
+function AudioPlayer() {{
+  const audioRef = useRef(null);
+  const waveRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [time, setTime] = useState('0:00');
 
-  <!-- Metrics -->
-  {'<div class="section animate-in"><div class="section-label">Impact</div><div class="metrics-grid">' + metrics_html + '</div></div>' if metrics_html else ''}
-
-  <!-- Projects -->
-  {'<div class="section animate-in"><div class="section-label">Projects</div><div class="projects-grid">' + projects_html + '</div></div>' if projects_html else ''}
-
-  <!-- CTA -->
-  <div class="cta-section animate-in">
-    <a href="mailto:{escape(email)}?subject={escape(f'Re: {job_title} at {company}')}" class="cta-button">Let's Talk</a>
-    <p class="cta-sub">{escape(email)}</p>
-  </div>
-
-  <div class="footer">
-    Built with ApplyPilot
-  </div>
-
-</div>
-
-<script>
-// Intersection Observer for scroll animations
-const observer = new IntersectionObserver((entries) => {{
-  entries.forEach(entry => {{
-    if (entry.isIntersecting) {{
-      entry.target.classList.add('visible');
+  useEffect(() => {{
+    if (!waveRef.current) return;
+    const bars = 55;
+    for (let i = 0; i < bars; i++) {{
+      const bar = document.createElement('div');
+      bar.className = 'waveform-bar';
+      bar.style.height = (6 + Math.random() * 30) + 'px';
+      waveRef.current.appendChild(bar);
     }}
-  }});
-}}, {{ threshold: 0.1 }});
+  }}, []);
 
-document.querySelectorAll('.animate-in').forEach(el => observer.observe(el));
+  const toggle = useCallback(() => {{
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) {{ a.play(); setPlaying(true); }}
+    else {{ a.pause(); setPlaying(false); }}
+  }}, []);
 
-// Audio player
-const audio = document.getElementById('pitchAudio');
-const playBtn = document.getElementById('playBtn');
-const playIcon = document.getElementById('playIcon');
-const pauseIcon = document.getElementById('pauseIcon');
-const timeDisplay = document.getElementById('audioTime');
-const waveformEl = document.getElementById('waveform');
+  useEffect(() => {{
+    const a = audioRef.current;
+    if (!a) return;
+    const onTime = () => {{
+      const pct = a.currentTime / (a.duration || 1);
+      const bars = waveRef.current?.querySelectorAll('.waveform-bar') || [];
+      const idx = Math.floor(pct * bars.length);
+      bars.forEach((b, i) => b.classList.toggle('active', i <= idx));
+      const m = Math.floor(a.currentTime / 60);
+      const s = Math.floor(a.currentTime % 60);
+      setTime(m + ':' + String(s).padStart(2, '0'));
+    }};
+    const onEnd = () => {{
+      setPlaying(false);
+      setTime('0:00');
+      const bars = waveRef.current?.querySelectorAll('.waveform-bar') || [];
+      bars.forEach(b => b.classList.remove('active'));
+    }};
+    a.addEventListener('timeupdate', onTime);
+    a.addEventListener('ended', onEnd);
+    return () => {{ a.removeEventListener('timeupdate', onTime); a.removeEventListener('ended', onEnd); }};
+  }}, []);
 
-// Generate waveform bars
-if (waveformEl) {{
-  const barCount = 60;
-  for (let i = 0; i < barCount; i++) {{
-    const bar = document.createElement('div');
-    bar.className = 'bar';
-    const h = 8 + Math.random() * 28;
-    bar.style.height = h + 'px';
-    waveformEl.appendChild(bar);
-  }}
+  if (!DATA.audioUri && !DATA.pitchScript) return null;
+
+  return (
+    <Section>
+      {{DATA.audioUri && (
+        <>
+          <SectionLabel>30-Second Pitch</SectionLabel>
+          <div className="flex items-center gap-3 bg-bg rounded-xl p-3">
+            <button onClick={{toggle}}
+              className="w-10 h-10 rounded-full bg-accent flex items-center justify-center flex-shrink-0 hover:scale-110 hover:shadow-lg hover:shadow-accent/20 transition-all">
+              {{playing ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#0a0f1a"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#0a0f1a"><polygon points="6,3 20,12 6,21"/></svg>
+              )}}
+            </button>
+            <div ref={{waveRef}} className="flex-1 h-10 flex items-center gap-[2px]"></div>
+            <span className="text-sm text-muted tabular-nums min-w-[3rem] text-right">{{time}}</span>
+          </div>
+          <audio ref={{audioRef}} src={{DATA.audioUri}} preload="auto" />
+        </>
+      )}}
+      {{DATA.pitchScript && (
+        <div className="mt-3">
+          <p className="text-[0.93rem] text-dim italic leading-relaxed border-l-[3px] border-accent pl-4">
+            {{DATA.pitchScript}}
+          </p>
+        </div>
+      )}}
+    </Section>
+  );
 }}
 
-function toggleAudio() {{
-  if (!audio) return;
-  if (audio.paused) {{
-    audio.play();
-    playIcon.style.display = 'none';
-    pauseIcon.style.display = 'block';
-  }} else {{
-    audio.pause();
-    playIcon.style.display = 'block';
-    pauseIcon.style.display = 'none';
-  }}
+/* ── Bio ── */
+function Bio() {{
+  if (!DATA.bio) return null;
+  return (
+    <Section>
+      <SectionLabel>About</SectionLabel>
+      <p className="text-[0.95rem] leading-relaxed text-slate-200">{{DATA.bio}}</p>
+    </Section>
+  );
 }}
 
-if (audio) {{
-  audio.addEventListener('timeupdate', () => {{
-    const pct = audio.currentTime / (audio.duration || 1);
-    const bars = waveformEl ? waveformEl.querySelectorAll('.bar') : [];
-    const activeIdx = Math.floor(pct * bars.length);
-    bars.forEach((bar, i) => {{
-      bar.classList.toggle('active', i <= activeIdx);
-    }});
-    const mins = Math.floor(audio.currentTime / 60);
-    const secs = Math.floor(audio.currentTime % 60);
-    if (timeDisplay) timeDisplay.textContent = mins + ':' + String(secs).padStart(2, '0');
-  }});
+/* ── Fit Score ── */
+function FitScore() {{
+  const scoreColor = DATA.fitScore >= 7 ? '#10b981' : (DATA.fitScore >= 5 ? '#f59e0b' : '#64748b');
+  const pct = DATA.fitScore * 10;
+  const dashOffset = 226 - (226 * pct / 100);
 
-  audio.addEventListener('ended', () => {{
-    playIcon.style.display = 'block';
-    pauseIcon.style.display = 'none';
-    const bars = waveformEl ? waveformEl.querySelectorAll('.bar') : [];
-    bars.forEach(bar => bar.classList.remove('active'));
-    if (timeDisplay) timeDisplay.textContent = '0:00';
-  }});
+  return (
+    <Section>
+      <SectionLabel>Fit Score</SectionLabel>
+      <div className="flex items-center gap-6 sm:flex-row flex-col">
+        <div className="relative w-20 h-20 flex-shrink-0">
+          <svg width="80" height="80" viewBox="0 0 80 80" style={{{{ transform: 'rotate(-90deg)' }}}}>
+            <circle cx="40" cy="40" r="36" fill="none" stroke="#1e293b" strokeWidth="6" />
+            <circle className="score-ring-fill" cx="40" cy="40" r="36" fill="none"
+              stroke={{scoreColor}} strokeWidth="6" strokeLinecap="round"
+              strokeDasharray="226" strokeDashoffset={{dashOffset}} />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center text-2xl font-bold"
+            style={{{{ color: scoreColor }}}}>{{DATA.fitScore}}</div>
+        </div>
+        <div className="flex-1 text-center sm:text-left">
+          <div className="font-semibold text-slate-200 mb-1">{{DATA.scoreLabel}}</div>
+          <p className="text-sm text-dim leading-relaxed">{{DATA.scoreReasoning}}</p>
+        </div>
+      </div>
+    </Section>
+  );
 }}
+
+/* ── Skills ── */
+function Skills() {{
+  if (DATA.skills.length === 0) return null;
+  return (
+    <Section>
+      <div className="flex justify-between items-center mb-3">
+        <SectionLabel>Skills</SectionLabel>
+        <span className="text-sm text-green font-semibold">{{DATA.matchedSkills}}/{{DATA.totalSkills}} match</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {{DATA.skills.map((s, i) => (
+          <span key={{i}} className={{
+            s.matched
+              ? "text-[0.78rem] px-3 py-1 rounded-md bg-greenDim text-green border border-green/25 font-medium"
+              : "text-[0.78rem] px-3 py-1 rounded-md bg-surface2 text-muted border border-border"
+          }}>{{s.skill}}</span>
+        ))}}
+      </div>
+    </Section>
+  );
+}}
+
+/* ── Metrics ── */
+function Metrics() {{
+  if (DATA.metrics.length === 0) return null;
+  return (
+    <Section>
+      <SectionLabel>Impact</SectionLabel>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {{DATA.metrics.map((m, i) => (
+          <div key={{i}} className="bg-bg rounded-xl p-4 text-center text-green font-medium text-[0.9rem] border border-greenDim">
+            {{m}}
+          </div>
+        ))}}
+      </div>
+    </Section>
+  );
+}}
+
+/* ── Projects ── */
+function Projects() {{
+  if (DATA.projects.length === 0) return null;
+  return (
+    <Section>
+      <SectionLabel>Projects</SectionLabel>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {{DATA.projects.map((p, i) => (
+          <div key={{i}} className="bg-bg rounded-xl p-4 border border-border hover:border-accent transition-colors">
+            <div className="font-semibold text-[0.9rem] text-slate-200">{{p}}</div>
+          </div>
+        ))}}
+      </div>
+    </Section>
+  );
+}}
+
+/* ── CTA ── */
+function CTA() {{
+  const ref = useFadeIn();
+  const subject = encodeURIComponent(`Re: ${{DATA.jobTitle}} at ${{DATA.company}}`);
+  return (
+    <div ref={{ref}} className="fade-in text-center py-10">
+      <a href={{`mailto:${{DATA.email}}?subject=${{subject}}`}}
+        className="inline-block bg-accent text-bg px-8 py-3 rounded-xl font-semibold text-lg hover:translate-y-[-2px] hover:shadow-lg hover:shadow-accent/20 transition-all">
+        Let&apos;s Talk
+      </a>
+      <p className="mt-3 text-sm text-muted">{{DATA.email}}</p>
+    </div>
+  );
+}}
+
+/* ── App ── */
+function App() {{
+  return (
+    <div className="max-w-[800px] mx-auto px-4 sm:px-6 relative z-10">
+      <Hero />
+      <AudioPlayer />
+      <Bio />
+      <FitScore />
+      <Skills />
+      <Metrics />
+      <Projects />
+      <CTA />
+      <div className="text-center pb-6 text-xs text-muted">Built with ApplyPilot</div>
+    </div>
+  );
+}}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 
 </body>
@@ -859,6 +595,163 @@ if (audio) {{
         "url": page_url,
     }
 
+
+# ---------------------------------------------------------------------------
+# GitHub Pages deployment
+# ---------------------------------------------------------------------------
+
+PAGES_REPO_NAME = "hire.nickjensen.co"
+PAGES_REPO_PATH_DEFAULT = APP_DIR / PAGES_REPO_NAME
+
+
+def deploy_to_github_pages(
+    repo_path: Path | None = None,
+    remote: str = "origin",
+) -> int:
+    """Deploy all generated landing pages to GitHub Pages.
+
+    Copies landing page files into a local git repo and pushes.
+    Creates the repo structure if it doesn't exist.
+
+    Args:
+        repo_path: Path to local clone. Defaults to ~/.applypilot/hire.nickjensen.co/.
+        remote: Git remote name.
+
+    Returns:
+        Number of pages deployed.
+    """
+    import shutil
+    import subprocess
+
+    if repo_path is None:
+        repo_path = PAGES_REPO_PATH_DEFAULT
+
+    repo_path = Path(repo_path)
+    repo_path.mkdir(parents=True, exist_ok=True)
+
+    # Initialize git repo if needed
+    git_dir = repo_path / ".git"
+    if not git_dir.exists():
+        subprocess.run(["git", "init"], cwd=repo_path, check=True, capture_output=True)
+        log.info("Initialized git repo at %s", repo_path)
+
+    # Ensure CNAME file
+    cname_path = repo_path / "CNAME"
+    if not cname_path.exists():
+        cname_path.write_text("hire.nickjensen.co\n", encoding="utf-8")
+
+    # Ensure .nojekyll (GitHub Pages serves files as-is)
+    nojekyll = repo_path / ".nojekyll"
+    if not nojekyll.exists():
+        nojekyll.write_text("", encoding="utf-8")
+
+    # Copy landing pages
+    if not LANDING_DIR.exists():
+        log.warning("No landing pages found at %s", LANDING_DIR)
+        return 0
+
+    deployed = 0
+    for slug_dir in LANDING_DIR.iterdir():
+        if not slug_dir.is_dir():
+            continue
+        index = slug_dir / "index.html"
+        if not index.exists():
+            continue
+
+        dest = repo_path / slug_dir.name
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(index), str(dest / "index.html"))
+        deployed += 1
+
+    if deployed == 0:
+        log.info("No landing pages to deploy.")
+        return 0
+
+    # Create a simple index page listing all deployed pages
+    _write_index_page(repo_path)
+
+    # Git add, commit, push
+    subprocess.run(["git", "add", "-A"], cwd=repo_path, check=True, capture_output=True)
+
+    # Check if there are changes to commit
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        cwd=repo_path, capture_output=True,
+    )
+    if result.returncode == 0:
+        log.info("No changes to deploy.")
+        return deployed
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    subprocess.run(
+        ["git", "commit", "-m", f"Deploy {deployed} landing pages ({now})"],
+        cwd=repo_path, check=True, capture_output=True,
+    )
+
+    # Push (with retries)
+    for attempt in range(4):
+        push_result = subprocess.run(
+            ["git", "push", "-u", remote, "main"],
+            cwd=repo_path, capture_output=True, text=True,
+        )
+        if push_result.returncode == 0:
+            log.info("Deployed %d pages to GitHub Pages.", deployed)
+            return deployed
+        log.warning("Push attempt %d failed: %s", attempt + 1, push_result.stderr.strip())
+        if attempt < 3:
+            import time as _time
+            _time.sleep(2 ** (attempt + 1))
+
+    log.error("Failed to push after 4 attempts.")
+    return deployed
+
+
+def _write_index_page(repo_path: Path) -> None:
+    """Write a simple root index.html that lists all deployed pages."""
+    pages = []
+    for d in sorted(repo_path.iterdir()):
+        if d.is_dir() and (d / "index.html").exists() and d.name != ".git":
+            pages.append(d.name)
+
+    items = "\n".join(
+        f'        <a href="/{p}/" class="block px-4 py-3 rounded-lg bg-surface2 border border-border '
+        f'hover:border-accent text-accent hover:text-white transition-all">{p}</a>'
+        for p in pages
+    )
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>hire.nickjensen.co</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {{
+  theme: {{ extend: {{ colors: {{
+    bg: '#0a0f1a', surface: '#111827', surface2: '#1e293b',
+    border: '#1e293b', accent: '#60a5fa', muted: '#64748b',
+  }} }} }}
+}}
+</script>
+</head>
+<body class="bg-bg text-slate-200 font-sans">
+<div class="max-w-lg mx-auto px-4 py-16">
+  <h1 class="text-2xl font-bold mb-8 text-center">Applications</h1>
+  <div class="flex flex-col gap-3">
+{items}
+  </div>
+  <p class="text-center text-xs text-muted mt-10">Built with ApplyPilot</p>
+</div>
+</body>
+</html>"""
+
+    (repo_path / "index.html").write_text(html, encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Batch runner
+# ---------------------------------------------------------------------------
 
 def run_landing_pages(min_score: int = 7, limit: int = 20) -> dict:
     """Generate landing pages for high-scoring jobs with cover letters.

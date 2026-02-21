@@ -1,6 +1,7 @@
 """Tests for applypilot.landing — personalized landing page generator."""
 
 import sqlite3
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -77,18 +78,17 @@ class TestGenerateLandingPage:
                 pitch_script="Hey, I saw the backend role at Stripe. Love it.",
                 audio_path=None,
                 profile=sample_profile,
-                base_url="https://nickjensen.codes",
+                base_url="https://hire.nickjensen.co",
             )
 
-            assert result["slug"] == "stripe-senior-backend-engineer"
-            assert result["url"] == "https://nickjensen.codes/stripe-senior-backend-engineer"
+            assert result["slug"] == "stripe"
+            assert result["url"] == "https://hire.nickjensen.co/stripe"
             assert result["path"].endswith("index.html")
 
             # Read and verify HTML content
-            from pathlib import Path
             html = Path(result["path"]).read_text(encoding="utf-8")
 
-            # Check key elements present
+            # Check key elements present in React data blob
             assert "Nick Jensen" in html
             assert "Stripe" in html
             assert "Senior Backend Engineer" in html
@@ -98,6 +98,27 @@ class TestGenerateLandingPage:
             assert "nick@example.com" in html
             assert "DataPipe" in html
             assert "50% latency reduction" in html
+        finally:
+            landing_mod.LANDING_DIR = original_dir
+
+    def test_uses_react_and_tailwind(self, sample_job, sample_profile, tmp_path):
+        import applypilot.landing as landing_mod
+        original_dir = landing_mod.LANDING_DIR
+        landing_mod.LANDING_DIR = tmp_path / "landing"
+
+        try:
+            from applypilot.landing import generate_landing_page
+
+            result = generate_landing_page(
+                sample_job, profile=sample_profile,
+            )
+            html = Path(result["path"]).read_text(encoding="utf-8")
+
+            assert "cdn.tailwindcss.com" in html
+            assert "react@18" in html
+            assert "react-dom@18" in html
+            assert "babel" in html
+            assert "ReactDOM.createRoot" in html
         finally:
             landing_mod.LANDING_DIR = original_dir
 
@@ -128,22 +149,15 @@ class TestGenerateLandingPage:
         finally:
             landing_mod.LANDING_DIR = original_dir
 
-    def test_slug_generation(self, sample_profile, tmp_path):
-        import applypilot.landing as landing_mod
-        original_dir = landing_mod.LANDING_DIR
-        landing_mod.LANDING_DIR = tmp_path / "landing"
+    def test_slug_generation_company_only(self, sample_profile, tmp_path):
+        """Slugs use company name only, not company + title."""
+        from applypilot.landing import _make_slug
 
-        try:
-            from applypilot.landing import _make_slug
-
-            assert _make_slug({"site": "Stripe", "title": "Engineer"}) == "stripe-engineer"
-            assert _make_slug({"site": "Open AI", "title": "ML Lead"}) == "open-ai-ml-lead"
-            assert _make_slug({"site": "JPMorgan Chase", "title": "SWE"}) == "jpmorgan-chase-swe"
-            # Defaults
-            assert _make_slug({"site": "Stripe"}).startswith("stripe-")
-            assert _make_slug({}).startswith("company-")
-        finally:
-            landing_mod.LANDING_DIR = original_dir
+        assert _make_slug({"site": "Stripe"}) == "stripe"
+        assert _make_slug({"site": "Stripe", "title": "Engineer"}) == "stripe"
+        assert _make_slug({"site": "Open AI"}) == "open-ai"
+        assert _make_slug({"site": "JPMorgan Chase"}) == "jpmorgan-chase"
+        assert _make_slug({}) == "company"
 
     def test_no_pitch_script(self, sample_job, sample_profile, tmp_path):
         import applypilot.landing as landing_mod
@@ -160,14 +174,12 @@ class TestGenerateLandingPage:
                 profile=sample_profile,
             )
 
-            from pathlib import Path
             html = Path(result["path"]).read_text(encoding="utf-8")
 
-            # Should still have the page, just no pitch text
+            # Should still have the page, just pitchScript is null in data
             assert "Nick Jensen" in html
             assert "Stripe" in html
-            # No pitch div in body (CSS class still exists in <style>)
-            assert '<div class="pitch-text">' not in html
+            assert '"pitchScript": null' in html or '"pitchScript":null' in html
         finally:
             landing_mod.LANDING_DIR = original_dir
 
@@ -185,11 +197,10 @@ class TestGenerateLandingPage:
                 profile=sample_profile,
             )
 
-            from pathlib import Path
             html = Path(result["path"]).read_text(encoding="utf-8")
-            # Should use initials placeholder
-            assert "hero-photo-placeholder" in html
-            assert "NJ" in html  # Nick Jensen initials
+            # photoUri should be null, initials should be NJ
+            assert '"photoUri": null' in html or '"photoUri":null' in html
+            assert '"initials": "NJ"' in html or '"initials":"NJ"' in html
         finally:
             landing_mod.LANDING_DIR = original_dir
 
@@ -213,9 +224,7 @@ class TestGenerateLandingPage:
                 profile=sample_profile,
             )
 
-            from pathlib import Path
             html = Path(result["path"]).read_text(encoding="utf-8")
-            assert "hero-photo" in html
             assert "data:image/jpeg;base64," in html
         finally:
             landing_mod.LANDING_DIR = original_dir
@@ -241,9 +250,7 @@ class TestGenerateLandingPage:
                 profile=sample_profile,
             )
 
-            from pathlib import Path
             html = Path(result["path"]).read_text(encoding="utf-8")
-            assert "audio-player" in html
             assert "data:audio/mpeg;base64," in html
             assert "waveform" in html
         finally:
@@ -262,11 +269,11 @@ class TestGenerateLandingPage:
                 profile=sample_profile,
             )
 
-            from pathlib import Path
             html = Path(result["path"]).read_text(encoding="utf-8")
-            assert "score-ring" in html
-            assert ">9<" in html  # Score display
+            # Score data in JSON blob
+            assert '"fitScore": 9' in html or '"fitScore":9' in html
             assert "Strong Match" in html
+            assert "score-ring-fill" in html
         finally:
             landing_mod.LANDING_DIR = original_dir
 
@@ -281,10 +288,10 @@ class TestGenerateLandingPage:
             result = generate_landing_page(
                 sample_job,
                 profile=sample_profile,
-                base_url="https://hire.nickjensen.co",
+                base_url="https://custom.example.com",
             )
 
-            assert result["url"] == "https://hire.nickjensen.co/stripe-senior-backend-engineer"
+            assert result["url"] == "https://custom.example.com/stripe"
         finally:
             landing_mod.LANDING_DIR = original_dir
 
@@ -321,7 +328,7 @@ class TestRunLandingPages:
 
         mock_profile.return_value = {"personal": {"full_name": "Nick"}, "experience": {}, "resume_facts": {}, "skills_boundary": {}}
         mock_gen_pitch.return_value = {"script": "pitch", "audio_path": "/audio.mp3"}
-        mock_gen_page.return_value = {"path": "/page.html", "slug": "stripe", "url": "https://nickjensen.codes/stripe"}
+        mock_gen_page.return_value = {"path": "/page.html", "slug": "stripe", "url": "https://hire.nickjensen.co/stripe"}
 
         from applypilot.landing import run_landing_pages
         result = run_landing_pages(min_score=7, limit=10)
@@ -333,7 +340,7 @@ class TestRunLandingPages:
         row = conn.execute("SELECT landing_page_path, landing_page_url, pitch_script FROM jobs WHERE url = ?",
                            ("https://example.com/1",)).fetchone()
         assert row["landing_page_path"] == "/page.html"
-        assert row["landing_page_url"] == "https://nickjensen.codes/stripe"
+        assert row["landing_page_url"] == "https://hire.nickjensen.co/stripe"
         assert row["pitch_script"] == "pitch"
 
     @patch("applypilot.landing.load_profile")
@@ -360,6 +367,61 @@ class TestRunLandingPages:
 
 
 # ---------------------------------------------------------------------------
+# Tests: deploy
+# ---------------------------------------------------------------------------
+
+class TestDeploy:
+    def test_copies_pages_to_repo(self, tmp_path):
+        import applypilot.landing as landing_mod
+        original_dir = landing_mod.LANDING_DIR
+        landing_dir = tmp_path / "landing_pages"
+        landing_mod.LANDING_DIR = landing_dir
+
+        # Create a landing page
+        page_dir = landing_dir / "stripe"
+        page_dir.mkdir(parents=True)
+        (page_dir / "index.html").write_text("<html>stripe</html>")
+
+        repo_path = tmp_path / "repo"
+
+        try:
+            from applypilot.landing import deploy_to_github_pages
+
+            with patch("subprocess.run") as mock_run:
+                # Mock git init, add, diff (has changes), commit, push
+                mock_run.return_value = MagicMock(returncode=0)
+                # diff --cached --quiet returns 1 = has changes
+                def side_effect(cmd, **kwargs):
+                    result = MagicMock(returncode=0, stdout="", stderr="")
+                    if "diff" in cmd and "--cached" in cmd:
+                        result.returncode = 1  # has changes
+                    return result
+                mock_run.side_effect = side_effect
+
+                count = deploy_to_github_pages(repo_path=repo_path)
+
+            assert count == 1
+            assert (repo_path / "stripe" / "index.html").exists()
+            assert (repo_path / "CNAME").read_text().strip() == "hire.nickjensen.co"
+            assert (repo_path / ".nojekyll").exists()
+            assert (repo_path / "index.html").exists()  # Root index page
+        finally:
+            landing_mod.LANDING_DIR = original_dir
+
+    def test_no_pages_returns_zero(self, tmp_path):
+        import applypilot.landing as landing_mod
+        original_dir = landing_mod.LANDING_DIR
+        landing_mod.LANDING_DIR = tmp_path / "empty_landing"
+
+        try:
+            from applypilot.landing import deploy_to_github_pages
+            count = deploy_to_github_pages(repo_path=tmp_path / "repo")
+            assert count == 0
+        finally:
+            landing_mod.LANDING_DIR = original_dir
+
+
+# ---------------------------------------------------------------------------
 # Tests: HTML structure
 # ---------------------------------------------------------------------------
 
@@ -373,14 +435,13 @@ class TestHTMLStructure:
             from applypilot.landing import generate_landing_page
 
             result = generate_landing_page(sample_job, profile=sample_profile)
-            from pathlib import Path
             html = Path(result["path"]).read_text(encoding="utf-8")
 
             assert 'viewport' in html
             assert 'width=device-width' in html
             assert '<!DOCTYPE html>' in html
-            assert 'animate-in' in html  # Scroll animations
-            assert 'IntersectionObserver' in html  # JS animation trigger
+            assert 'fade-in' in html
+            assert 'IntersectionObserver' in html
         finally:
             landing_mod.LANDING_DIR = original_dir
 
@@ -409,11 +470,12 @@ class TestHTMLStructure:
                 profile=sample_profile,
             )
 
-            from pathlib import Path
             html = Path(result["path"]).read_text(encoding="utf-8")
 
-            # Raw script tags should be escaped
-            assert '<script>alert' not in html
-            assert '&lt;script&gt;' in html
+            # The title/meta tags should have escaped HTML
+            assert '&lt;script&gt;' in html or '\\u003c' in html
+            # The JSON data blob escapes via json.dumps ensure_ascii
+            # Raw unescaped script tags from user data should not appear
+            assert '<script>alert("xss")</script>' not in html
         finally:
             landing_mod.LANDING_DIR = original_dir

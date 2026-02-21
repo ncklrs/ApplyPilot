@@ -539,7 +539,9 @@ def landing(
     min_score: int = typer.Option(7, "--min-score", help="Minimum fit score for page generation."),
     limit: int = typer.Option(20, "--limit", "-l", help="Max pages to generate."),
     url: Optional[str] = typer.Option(None, "--url", help="Generate for a specific job URL only."),
-    base_url: str = typer.Option("https://nickjensen.codes", "--base-url", help="Base URL for deployed pages."),
+    base_url: str = typer.Option("https://hire.nickjensen.co", "--base-url", help="Base URL for deployed pages."),
+    deploy: bool = typer.Option(False, "--deploy", help="Deploy to GitHub Pages after generation."),
+    repo_path: Optional[str] = typer.Option(None, "--repo-path", help="Local path to GitHub Pages repo."),
 ) -> None:
     """Generate personalized landing pages with voice pitch for job applications."""
     _bootstrap()
@@ -566,7 +568,7 @@ def landing(
         console.print(f"[cyan]Generating pitch for {job['title'][:40]} @ {job['site'][:20]}...[/cyan]")
         pitch = generate_pitch(job, profile)
 
-        console.print(f"[cyan]Generating landing page...[/cyan]")
+        console.print("[cyan]Generating landing page...[/cyan]")
         page = generate_landing_page(
             job,
             pitch_script=pitch.get("script"),
@@ -590,16 +592,29 @@ def landing(
         console.print(f"  URL:  {page['url']}")
         if pitch.get("audio_path"):
             console.print(f"  Audio: {pitch['audio_path']}")
-        return
 
-    # Batch mode
-    from applypilot.landing import run_landing_pages
+    else:
+        # Batch mode
+        from applypilot.landing import run_landing_pages
 
-    result = run_landing_pages(min_score=min_score, limit=limit)
-    console.print(f"\n[bold]Landing Pages[/bold]")
-    console.print(f"  Generated: {result['generated']}")
-    console.print(f"  Errors:    {result['errors']}")
-    console.print(f"  Time:      {result['elapsed']:.1f}s")
+        result = run_landing_pages(min_score=min_score, limit=limit)
+        console.print(f"\n[bold]Landing Pages[/bold]")
+        console.print(f"  Generated: {result['generated']}")
+        console.print(f"  Errors:    {result['errors']}")
+        console.print(f"  Time:      {result['elapsed']:.1f}s")
+
+    # Deploy if requested
+    if deploy:
+        from pathlib import Path
+        from applypilot.landing import deploy_to_github_pages
+
+        rp = Path(repo_path) if repo_path else None
+        console.print("\n[cyan]Deploying to GitHub Pages...[/cyan]")
+        count = deploy_to_github_pages(repo_path=rp)
+        if count > 0:
+            console.print(f"[green]Deployed {count} pages to hire.nickjensen.co[/green]")
+        else:
+            console.print("[dim]No pages to deploy.[/dim]")
 
 
 if __name__ == "__main__":
