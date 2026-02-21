@@ -1,0 +1,93 @@
+# Ashby employer registry for ApplyPilot
+# Users can add their own employers by finding the board ID.
+# Ashby job boards are visible at: https://jobs.ashbyhq.com/{board_id}
+
+employers:
+
+  # ── Developer Tools & Platforms ──────────────────────────────────────────
+
+  notion:
+    name: "Notion (via Ashby)"
+    board_id: "notion"
+
+  linear:
+    name: "Linear (via Ashby)"
+    board_id: "linear"
+
+  vercel:
+    name: "Vercel (via Ashby)"
+    board_id: "vercel"
+
+  resend:
+    name: "Resend"
+    board_id: "resend"
+
+  clerk:
+    name: "Clerk"
+    board_id: "clerk"
+
+  # ── Fintech ──────────────────────────────────────────────────────────────
+
+  ramp:
+    name: "Ramp (via Ashby)"
+    board_id: "ramp"
+
+  brex:
+    name: "Brex (via Ashby)"
+    board_id: "brex"
+
+  # ── AI & ML ──────────────────────────────────────────────────────────────
+
+  anthropic:
+    name: "Anthropic"
+    board_id: "anthropic"
+
+  cohere:
+    name: "Cohere"
+    board_id: "cohere"
+
+  perplexity:
+    name: "Perplexity"
+    board_id: "perplexity"
+
+  mistral:
+    name: "Mistral AI"
+    board_id: "mistralai"
+
+  # ── Infrastructure ───────────────────────────────────────────────────────
+
+  railway:
+    name: "Railway"
+    board_id: "railway"
+
+  neon:
+    name: "Neon"
+    board_id: "neon"
+
+  turso:
+    name: "Turso"
+    board_id: "turso"
+
+  # ── Security ─────────────────────────────────────────────────────────────
+
+  wiz:
+    name: "Wiz"
+    board_id: "wiz"
+
+  snyk:
+    name: "Snyk"
+    board_id: "snyk"
+
+  # ── Other ────────────────────────────────────────────────────────────────
+
+  cal_com:
+    name: "Cal.com"
+    board_id: "calcom"
+
+  deno:
+    name: "Deno"
+    board_id: "deno"
+
+  planetscale:
+    name: "PlanetScale (via Ashby)"
+    board_id: "planetscale"

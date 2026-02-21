@@ -35,7 +35,7 @@ console = Console()
 STAGE_ORDER = ("discover", "enrich", "score", "tailor", "cover", "pdf")
 
 STAGE_META: dict[str, dict] = {
-    "discover": {"desc": "Job discovery (JobSpy + Workday + smart extract)"},
+    "discover": {"desc": "Job discovery (JobSpy + Workday + Greenhouse + Lever + Ashby + smart extract)"},
     "enrich":   {"desc": "Detail enrichment (full descriptions + apply URLs)"},
     "score":    {"desc": "LLM scoring (fit 1-10)"},
     "tailor":   {"desc": "Resume tailoring (LLM + validation)"},
@@ -60,8 +60,11 @@ _UPSTREAM: dict[str, str | None] = {
 # ---------------------------------------------------------------------------
 
 def _run_discover(workers: int = 1) -> dict:
-    """Stage: Job discovery — JobSpy, Workday, and smart-extract scrapers."""
-    stats: dict = {"jobspy": None, "workday": None, "smartextract": None}
+    """Stage: Job discovery — JobSpy, Workday, Greenhouse, Lever, Ashby, and smart-extract scrapers."""
+    stats: dict = {
+        "jobspy": None, "workday": None, "greenhouse": None,
+        "lever": None, "ashby": None, "smartextract": None,
+    }
 
     # JobSpy
     console.print("  [cyan]JobSpy full crawl...[/cyan]")
@@ -84,6 +87,39 @@ def _run_discover(workers: int = 1) -> dict:
         log.error("Workday scraper failed: %s", e)
         console.print(f"  [red]Workday error:[/red] {e}")
         stats["workday"] = f"error: {e}"
+
+    # Greenhouse corporate scraper
+    console.print("  [cyan]Greenhouse corporate scraper...[/cyan]")
+    try:
+        from applypilot.discovery.greenhouse import run_greenhouse_discovery
+        run_greenhouse_discovery(workers=workers)
+        stats["greenhouse"] = "ok"
+    except Exception as e:
+        log.error("Greenhouse scraper failed: %s", e)
+        console.print(f"  [red]Greenhouse error:[/red] {e}")
+        stats["greenhouse"] = f"error: {e}"
+
+    # Lever corporate scraper
+    console.print("  [cyan]Lever corporate scraper...[/cyan]")
+    try:
+        from applypilot.discovery.lever import run_lever_discovery
+        run_lever_discovery(workers=workers)
+        stats["lever"] = "ok"
+    except Exception as e:
+        log.error("Lever scraper failed: %s", e)
+        console.print(f"  [red]Lever error:[/red] {e}")
+        stats["lever"] = f"error: {e}"
+
+    # Ashby corporate scraper
+    console.print("  [cyan]Ashby corporate scraper...[/cyan]")
+    try:
+        from applypilot.discovery.ashby import run_ashby_discovery
+        run_ashby_discovery(workers=workers)
+        stats["ashby"] = "ok"
+    except Exception as e:
+        log.error("Ashby scraper failed: %s", e)
+        console.print(f"  [red]Ashby error:[/red] {e}")
+        stats["ashby"] = f"error: {e}"
 
     # Smart extract
     console.print("  [cyan]Smart extract (AI-powered scraping)...[/cyan]")

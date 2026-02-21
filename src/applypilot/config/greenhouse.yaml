@@ -1,0 +1,163 @@
+# Greenhouse employer registry for ApplyPilot
+# Users can add their own employers by finding the board token.
+# Board tokens are visible at: https://boards.greenhouse.io/{board_token}
+
+employers:
+
+  # ── Fintech ──────────────────────────────────────────────────────────────
+
+  stripe:
+    name: "Stripe"
+    board_token: "stripe"
+
+  plaid:
+    name: "Plaid"
+    board_token: "plaid"
+
+  brex:
+    name: "Brex"
+    board_token: "brex"
+
+  ramp:
+    name: "Ramp"
+    board_token: "ramp"
+
+  mercury:
+    name: "Mercury"
+    board_token: "mercury"
+
+  column:
+    name: "Column"
+    board_token: "column"
+
+  affirm:
+    name: "Affirm"
+    board_token: "affirm"
+
+  # ── Infrastructure & Cloud ───────────────────────────────────────────────
+
+  cloudflare:
+    name: "Cloudflare"
+    board_token: "cloudflare"
+
+  datadog:
+    name: "Datadog"
+    board_token: "datadog"
+
+  hashicorp:
+    name: "HashiCorp"
+    board_token: "hashicorp"
+
+  grafana:
+    name: "Grafana Labs"
+    board_token: "grafanalabs"
+
+  elastic:
+    name: "Elastic"
+    board_token: "elastic"
+
+  confluent:
+    name: "Confluent"
+    board_token: "confluent"
+
+  digitalocean:
+    name: "DigitalOcean"
+    board_token: "digitalocean"
+
+  # ── Developer Tools & Platforms ──────────────────────────────────────────
+
+  figma:
+    name: "Figma"
+    board_token: "figma"
+
+  notion:
+    name: "Notion"
+    board_token: "notion"
+
+  airtable:
+    name: "Airtable"
+    board_token: "airtable"
+
+  webflow:
+    name: "Webflow"
+    board_token: "webflow"
+
+  vercel:
+    name: "Vercel"
+    board_token: "vercel"
+
+  supabase:
+    name: "Supabase"
+    board_token: "supabase"
+
+  linear:
+    name: "Linear"
+    board_token: "linear"
+
+  retool:
+    name: "Retool"
+    board_token: "retool"
+
+  dbt_labs:
+    name: "dbt Labs"
+    board_token: "dbtlabsinc"
+
+  # ── Communication & Productivity ─────────────────────────────────────────
+
+  discord:
+    name: "Discord"
+    board_token: "discord"
+
+  loom:
+    name: "Loom"
+    board_token: "loom"
+
+  miro:
+    name: "Miro"
+    board_token: "miro"
+
+  grammarly:
+    name: "Grammarly"
+    board_token: "grammarly"
+
+  # ── Social & Consumer ────────────────────────────────────────────────────
+
+  reddit:
+    name: "Reddit"
+    board_token: "reddit"
+
+  pinterest:
+    name: "Pinterest"
+    board_token: "pinterest"
+
+  snap:
+    name: "Snap"
+    board_token: "snap"
+
+  duolingo:
+    name: "Duolingo"
+    board_token: "duolingo"
+
+  canva:
+    name: "Canva"
+    board_token: "canva"
+
+  # ── Data & Analytics ─────────────────────────────────────────────────────
+
+  mongodb:
+    name: "MongoDB"
+    board_token: "mongodb"
+
+  planetscale:
+    name: "PlanetScale"
+    board_token: "planetscale"
+
+  # ── Communication ────────────────────────────────────────────────────────
+
+  twilio:
+    name: "Twilio"
+    board_token: "twilio"
+
+  hubspot:
+    name: "HubSpot"
+    board_token: "hubspot"

@@ -87,9 +87,14 @@ def run(
     workers: int = typer.Option(1, "--workers", "-w", help="Parallel threads for discovery/enrichment stages."),
     stream: bool = typer.Option(False, "--stream", help="Run stages concurrently (streaming mode)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview stages without executing."),
+    max_llm_calls: int = typer.Option(0, "--max-llm-calls", help="Cap total LLM calls for this run (0 = unlimited)."),
 ) -> None:
     """Run pipeline stages: discover, enrich, score, tailor, cover, pdf."""
     _bootstrap()
+
+    if max_llm_calls > 0:
+        from applypilot.llm import set_budget
+        set_budget(max_llm_calls)
 
     from applypilot.pipeline import run_pipeline
 

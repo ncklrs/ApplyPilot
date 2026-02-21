@@ -1,0 +1,89 @@
+# Lever employer registry for ApplyPilot
+# Users can add their own employers by finding the company slug.
+# Lever postings are visible at: https://jobs.lever.co/{company_slug}
+
+employers:
+
+  # ── Tech ─────────────────────────────────────────────────────────────────
+
+  netflix_jobs:
+    name: "Netflix (via Lever)"
+    company_slug: "netflix"
+
+  shopify:
+    name: "Shopify (via Lever)"
+    company_slug: "shopify"
+
+  spotify:
+    name: "Spotify"
+    company_slug: "spotify"
+
+  github:
+    name: "GitHub"
+    company_slug: "github"
+
+  gitlab:
+    name: "GitLab"
+    company_slug: "gitlab"
+
+  coinbase:
+    name: "Coinbase"
+    company_slug: "coinbase"
+
+  rippling:
+    name: "Rippling"
+    company_slug: "rippling"
+
+  databricks:
+    name: "Databricks"
+    company_slug: "databricks"
+
+  palantir:
+    name: "Palantir"
+    company_slug: "palantir"
+
+  sourcegraph:
+    name: "Sourcegraph"
+    company_slug: "sourcegraph"
+
+  # ── Startups & Growth ────────────────────────────────────────────────────
+
+  postman:
+    name: "Postman"
+    company_slug: "postman"
+
+  anduril:
+    name: "Anduril"
+    company_slug: "anduril"
+
+  ironclad:
+    name: "Ironclad"
+    company_slug: "ironcladapp"
+
+  watershed:
+    name: "Watershed"
+    company_slug: "watershedclimate"
+
+  whatnot:
+    name: "Whatnot"
+    company_slug: "whatnot"
+
+  samsara:
+    name: "Samsara"
+    company_slug: "samsara"
+
+  gusto:
+    name: "Gusto"
+    company_slug: "gusto"
+
+  scale_ai:
+    name: "Scale AI"
+    company_slug: "scaleai"
+
+  coder:
+    name: "Coder"
+    company_slug: "coder"
+
+  fly_io:
+    name: "Fly.io"
+    company_slug: "fly-io"
