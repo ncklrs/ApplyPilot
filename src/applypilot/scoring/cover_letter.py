@@ -67,7 +67,7 @@ PARAGRAPH 1 (2-3 sentences): Open with a specific thing YOU built that solves TH
 
 PARAGRAPH 2 (3-4 sentences): Pick 2 achievements from the resume that are MOST relevant to THIS job. Use numbers. Frame as solving their problem, not listing your accomplishments.{projects_hint}{metrics_hint}
 
-PARAGRAPH 3 (1-2 sentences): One specific thing about the company from the job description (a product, a technical challenge, a team structure). Then close. "Happy to walk through any of this in more detail." or "Let's discuss." Nothing else.
+PARAGRAPH 3 (1-2 sentences): One specific thing about the company from the job description (a product, a technical challenge, a team structure). Then close. If a LANDING_PAGE_URL is provided in the job context, end with something like "I put together a quick page at [URL] showing how my work maps to what you're building." Otherwise: "Happy to walk through any of this in more detail." or "Let's discuss." Nothing else.
 
 BANNED WORDS/PHRASES (using ANY of these = instant rejection):
 "resonated", "aligns with", "passionate", "eager", "eager to", "excited to apply", "I am confident",
@@ -122,10 +122,13 @@ def generate_cover_letter(
     Returns:
         The cover letter text (best attempt even if validation failed).
     """
+    landing_url = job.get("landing_page_url") or ""
+    landing_line = f"\nLANDING_PAGE_URL: {landing_url}" if landing_url else ""
     job_text = (
         f"TITLE: {job['title']}\n"
         f"COMPANY: {job['site']}\n"
-        f"LOCATION: {job.get('location', 'N/A')}\n\n"
+        f"LOCATION: {job.get('location', 'N/A')}\n"
+        f"{landing_line}\n"
         f"DESCRIPTION:\n{(job.get('full_description') or '')[:6000]}"
     )
 
@@ -169,12 +172,15 @@ def generate_cover_letter(
 
 # ── Batch Entry Point ────────────────────────────────────────────────────
 
-def run_cover_letters(min_score: int = 7, limit: int = 20) -> dict:
+def run_cover_letters(min_score: int = 7, limit: int = 20,
+                      use_agent: bool = False, agent_model: str = "sonnet") -> dict:
     """Generate cover letters for high-scoring jobs that have tailored resumes.
 
     Args:
         min_score: Minimum fit_score threshold.
         limit: Maximum jobs to process.
+        use_agent: If True, use Claude Code agent instead of LLM API.
+        agent_model: Claude model name for agent mode.
 
     Returns:
         {"generated": int, "errors": int, "elapsed": float}
@@ -204,9 +210,11 @@ def run_cover_letters(min_score: int = 7, limit: int = 20) -> dict:
         jobs = [dict(zip(columns, row)) for row in jobs]
 
     COVER_LETTER_DIR.mkdir(parents=True, exist_ok=True)
+
+    mode = "agent" if use_agent else "LLM API"
     log.info(
-        "Generating cover letters for %d jobs (score >= %d)...",
-        len(jobs), min_score,
+        "Generating cover letters for %d jobs (score >= %d, mode=%s)...",
+        len(jobs), min_score, mode,
     )
     t0 = time.time()
     completed = 0
@@ -216,7 +224,11 @@ def run_cover_letters(min_score: int = 7, limit: int = 20) -> dict:
     for job in jobs:
         completed += 1
         try:
-            letter = generate_cover_letter(resume_text, job, profile)
+            if use_agent:
+                from applypilot.scoring.agent import cover_via_agent
+                letter = cover_via_agent(resume_text, job, profile, model=agent_model)
+            else:
+                letter = generate_cover_letter(resume_text, job, profile)
 
             # Build safe filename prefix
             safe_title = re.sub(r"[^\w\s-]", "", job["title"])[:50].strip().replace(" ", "_")

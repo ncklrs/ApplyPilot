@@ -15,13 +15,19 @@ import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from html.parser import HTMLParser
 
 import yaml
 
 from applypilot import config
 from applypilot.config import CONFIG_DIR
 from applypilot.database import get_connection, init_db
+from applypilot.discovery.utils import (
+    load_location_filter,
+    location_ok,
+    strip_html,
+    setup_proxy,
+    urlopen as _urlopen,
+)
 
 log = logging.getLogger(__name__)
 
@@ -36,119 +42,6 @@ def load_employers() -> dict:
         return {}
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return data.get("employers", {})
-
-
-# -- Location filtering from search config -----------------------------------
-
-def _load_location_filter(search_cfg: dict | None = None):
-    """Load location accept/reject lists from search config."""
-    if search_cfg is None:
-        search_cfg = config.load_search_config()
-
-    accept = search_cfg.get("location_accept", [])
-    reject = search_cfg.get("location_reject_non_remote", [])
-    return accept, reject
-
-
-def _location_ok(location: str | None, accept: list[str], reject: list[str]) -> bool:
-    """Check if a job location passes the user's location filter."""
-    if not location:
-        return True
-
-    loc = location.lower()
-
-    if any(r in loc for r in ("remote", "anywhere", "work from home", "wfh", "distributed")):
-        return True
-
-    for r in reject:
-        if r.lower() in loc:
-            return False
-
-    for a in accept:
-        if a.lower() in loc:
-            return True
-
-    return False
-
-
-# -- HTML stripper -----------------------------------------------------------
-
-class _HTMLStripper(HTMLParser):
-    """Strip HTML tags, keep text content."""
-
-    def __init__(self):
-        super().__init__()
-        self._parts: list[str] = []
-        self._skip = False
-
-    def handle_starttag(self, tag, attrs):
-        if tag in ("script", "style"):
-            self._skip = True
-        elif tag in ("br", "p", "div", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"):
-            self._parts.append("\n")
-
-    def handle_endtag(self, tag):
-        if tag in ("script", "style"):
-            self._skip = False
-        elif tag in ("p", "div", "li", "tr"):
-            self._parts.append("\n")
-
-    def handle_data(self, data):
-        if not self._skip:
-            self._parts.append(data)
-
-    def get_text(self) -> str:
-        text = "".join(self._parts)
-        text = re.sub(r"[^\S\n]+", " ", text)
-        text = re.sub(r"\n{3,}", "\n\n", text)
-        return text.strip()
-
-
-def strip_html(html: str) -> str:
-    """Convert HTML to plain text."""
-    if not html:
-        return ""
-    stripper = _HTMLStripper()
-    stripper.feed(html)
-    return stripper.get_text()
-
-
-# -- Proxy -------------------------------------------------------------------
-
-_opener = None
-
-
-def setup_proxy(proxy_str: str | None) -> None:
-    """Configure a global urllib opener with proxy support."""
-    global _opener
-    if not proxy_str:
-        _opener = urllib.request.build_opener()
-        return
-
-    parts = proxy_str.split(":")
-    if len(parts) == 4:
-        host, port, user, passwd = parts
-        proxy_url = f"http://{user}:{passwd}@{host}:{port}"
-    elif len(parts) == 2:
-        proxy_url = f"http://{parts[0]}:{parts[1]}"
-    else:
-        log.warning("Proxy format not recognized: %s (expected host:port:user:pass or host:port)", proxy_str)
-        _opener = urllib.request.build_opener()
-        return
-
-    proxy_handler = urllib.request.ProxyHandler({
-        "http": proxy_url,
-        "https": proxy_url,
-    })
-    _opener = urllib.request.build_opener(proxy_handler)
-    log.info("Proxy configured: %s:%s", parts[0], parts[1])
-
-
-def _urlopen(req, timeout=30):
-    """Open a URL using the configured opener (with or without proxy)."""
-    if _opener:
-        return _opener.open(req, timeout=timeout)
-    return urllib.request.urlopen(req, timeout=timeout)
 
 
 # -- Workday API -------------------------------------------------------------
@@ -222,7 +115,7 @@ def search_employer(
         for j in postings:
             loc = j.get("locationsText", "")
             if location_filter and accept_locs is not None and reject_locs is not None:
-                if not _location_ok(loc, accept_locs, reject_locs):
+                if not location_ok(loc, accept_locs, reject_locs):
                     continue
 
             all_jobs.append({
@@ -492,7 +385,7 @@ def run_workday_discovery(employers: dict | None = None, workers: int = 1) -> di
 
     search_cfg = config.load_search_config()
     queries_cfg = search_cfg.get("queries", [])
-    accept_locs, reject_locs = _load_location_filter(search_cfg)
+    accept_locs, reject_locs = load_location_filter(search_cfg)
 
     # Default to tier 1-2 queries for workday scraping
     max_tier = search_cfg.get("workday_max_tier", 2)

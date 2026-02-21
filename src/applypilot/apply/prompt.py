@@ -495,6 +495,11 @@ def build_prompt(job: dict, tailored_resume: str,
     else:
         cl_display = cover_letter_text
 
+    # Landing page URL — use as portfolio/website in form fields
+    landing_url = job.get("landing_page_url") or ""
+    if landing_url:
+        profile_summary += f"\nPersonalized Portfolio: {landing_url}"
+
     # Phone digits only (for fields with country prefix)
     phone_digits = "".join(c for c in personal.get("phone", "") if c.isdigit())
 

@@ -26,7 +26,7 @@ console = Console()
 log = logging.getLogger(__name__)
 
 # Valid pipeline stages (in execution order)
-VALID_STAGES = ("discover", "enrich", "score", "tailor", "cover", "pdf")
+VALID_STAGES = ("discover", "enrich", "score", "tailor", "cover", "pdf", "landing")
 
 
 # ---------------------------------------------------------------------------
@@ -87,9 +87,16 @@ def run(
     workers: int = typer.Option(1, "--workers", "-w", help="Parallel threads for discovery/enrichment stages."),
     stream: bool = typer.Option(False, "--stream", help="Run stages concurrently (streaming mode)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview stages without executing."),
+    max_llm_calls: int = typer.Option(0, "--max-llm-calls", help="Cap total LLM calls for this run (0 = unlimited)."),
+    agent: bool = typer.Option(False, "--agent", help="Use Claude Code agent for tailor/cover (higher quality, requires claude CLI)."),
+    model: str = typer.Option("sonnet", "--model", "-m", help="Claude model for --agent mode (sonnet, haiku, opus)."),
 ) -> None:
     """Run pipeline stages: discover, enrich, score, tailor, cover, pdf."""
     _bootstrap()
+
+    if max_llm_calls > 0:
+        from applypilot.llm import set_budget
+        set_budget(max_llm_calls)
 
     from applypilot.pipeline import run_pipeline
 
@@ -110,12 +117,25 @@ def run(
         from applypilot.config import check_tier
         check_tier(2, "AI scoring/tailoring")
 
+    # Validate --agent mode
+    if agent:
+        from applypilot.scoring.agent import is_agent_available
+        if not is_agent_available():
+            console.print(
+                "[red]--agent requires Claude Code CLI.[/red]\n"
+                "Install from [bold]https://claude.ai/code[/bold] or omit --agent to use LLM API."
+            )
+            raise typer.Exit(code=1)
+        console.print("[cyan]Agent mode enabled — using Claude Code CLI for tailor/cover[/cyan]")
+
     result = run_pipeline(
         stages=stage_list,
         min_score=min_score,
         dry_run=dry_run,
         stream=stream,
         workers=workers,
+        use_agent=agent,
+        agent_model=model,
     )
 
     if result.get("errors"):
@@ -310,6 +330,291 @@ def dashboard() -> None:
     from applypilot.view import open_dashboard
 
     open_dashboard()
+
+
+@app.command()
+def dedup(
+    title_threshold: float = typer.Option(0.8, "--title-threshold", help="Min title similarity (0-1)."),
+    company_threshold: float = typer.Option(0.7, "--company-threshold", help="Min company name similarity (0-1)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report duplicates without deleting."),
+) -> None:
+    """Find and remove fuzzy duplicate job postings."""
+    _bootstrap()
+
+    from applypilot.dedup import remove_duplicates
+    from applypilot.database import get_connection
+
+    conn = get_connection()
+    result = remove_duplicates(
+        conn,
+        title_threshold=title_threshold,
+        company_threshold=company_threshold,
+        dry_run=dry_run,
+    )
+
+    console.print(f"\n[bold]Fuzzy Dedup Results[/bold]")
+    console.print(f"  Duplicate pairs found: {result['found']}")
+    console.print(f"  Removed: {result['removed']}")
+
+    if result["duplicates"]:
+        table = Table(title="Sample Duplicates", show_header=True)
+        table.add_column("Keep URL")
+        table.add_column("Remove URL")
+        table.add_column("Similarity", justify="right")
+        for keep, remove, sim in result["duplicates"]:
+            table.add_row(keep[:60], remove[:60], sim)
+        console.print(table)
+
+    if dry_run and result["found"]:
+        console.print("\n[dim]Run without --dry-run to delete duplicates.[/dim]")
+    console.print()
+
+
+@app.command(name="convert-resume")
+def convert_resume_cmd(
+    input_file: str = typer.Argument(..., help="Path to resume file (.pdf, .docx, .md, .txt)."),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output .txt path. Default: ~/.applypilot/resume.txt"),
+) -> None:
+    """Convert a resume from PDF/DOCX/Markdown to plain text."""
+    from pathlib import Path
+    from applypilot.resume_parser import convert_resume
+    from applypilot.config import RESUME_PATH
+
+    src = Path(input_file).expanduser().resolve()
+    if not src.exists():
+        console.print(f"[red]File not found:[/red] {src}")
+        raise typer.Exit(code=1)
+
+    out_path = Path(output) if output else RESUME_PATH
+
+    try:
+        text = convert_resume(src, output_path=out_path)
+        console.print(f"[green]Converted {src.name} -> {out_path}[/green] ({len(text)} chars)")
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1)
+    except ImportError as e:
+        console.print(f"[red]{e}[/red]")
+        console.print("[dim]Install optional deps: pip install applypilot[resume][/dim]")
+        raise typer.Exit(code=1)
+
+
+@app.command(name="discover-ats")
+def discover_ats_cmd(
+    url: str = typer.Argument(..., help="Company career page URL to probe."),
+) -> None:
+    """Auto-detect which ATS a company uses and output a YAML snippet."""
+    _bootstrap()
+
+    from applypilot.discovery.ats_detect import detect_ats
+
+    console.print(f"[cyan]Probing {url}...[/cyan]")
+
+    result = detect_ats(url)
+    if not result:
+        console.print("[yellow]No ATS detected.[/yellow] The site may use a custom career page.")
+        console.print("[dim]Tip: Try the direct career page URL (e.g. https://example.com/careers)[/dim]")
+        raise typer.Exit(code=1)
+
+    console.print(f"\n[green]Detected ATS:[/green] [bold]{result['ats'].upper()}[/bold]")
+    console.print(f"  Token: {result['token']}")
+    console.print(f"  Config: {result['config_file']}")
+    console.print(f"\n[bold]Add to {result['config_file']}:[/bold]")
+    console.print(f"\n{result['yaml_snippet']}")
+    console.print()
+
+
+@app.command()
+def track(
+    url: str = typer.Argument(..., help="Job URL to update."),
+    stage: Optional[str] = typer.Option(None, "--stage", "-s", help="Set manual stage (interview, offer, rejected, withdrawn)."),
+    notes: Optional[str] = typer.Option(None, "--notes", "-n", help="Add notes to this job."),
+) -> None:
+    """Manually track a job's stage or add notes."""
+    _bootstrap()
+
+    from applypilot.database import get_connection
+    from datetime import datetime, timezone
+
+    conn = get_connection()
+
+    # Verify job exists
+    row = conn.execute("SELECT url, title, site FROM jobs WHERE url = ?", (url,)).fetchone()
+    if not row:
+        console.print(f"[red]Job not found:[/red] {url}")
+        raise typer.Exit(code=1)
+
+    updates = []
+    params = []
+
+    if stage:
+        valid_stages = ("interview", "offer", "rejected", "withdrawn", "ghosted", "negotiating")
+        if stage not in valid_stages:
+            console.print(f"[red]Invalid stage:[/red] '{stage}'. Valid: {', '.join(valid_stages)}")
+            raise typer.Exit(code=1)
+        updates.append("user_stage = ?")
+        params.append(stage)
+
+    if notes:
+        updates.append("user_notes = ?")
+        params.append(notes)
+
+    if not updates:
+        console.print("[yellow]Specify --stage or --notes to update.[/yellow]")
+        raise typer.Exit(code=1)
+
+    params.append(url)
+    conn.execute(f"UPDATE jobs SET {', '.join(updates)} WHERE url = ?", params)
+    conn.commit()
+
+    console.print(f"[green]Updated:[/green] {row['title']} @ {row['site']}")
+    if stage:
+        console.print(f"  Stage: {stage}")
+    if notes:
+        console.print(f"  Notes: {notes}")
+
+
+@app.command()
+def inbox(
+    days: int = typer.Option(7, "--days", "-d", help="Look back this many days."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show matches without updating DB."),
+) -> None:
+    """Scan email inbox for application responses (confirmations, interviews, rejections)."""
+    _bootstrap()
+
+    from applypilot.inbox import scan_inbox, update_from_inbox
+
+    try:
+        matches = scan_inbox(since_days=days)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        console.print(
+            "\n[dim]Add to ~/.applypilot/.env:[/dim]\n"
+            "  IMAP_EMAIL=your@gmail.com\n"
+            "  IMAP_PASSWORD=your-app-password\n"
+            "\n[dim]Generate an App Password at: https://myaccount.google.com/apppasswords[/dim]"
+        )
+        raise typer.Exit(code=1)
+    except ConnectionError as e:
+        console.print(f"[red]Connection failed:[/red] {e}")
+        raise typer.Exit(code=1)
+
+    if not matches:
+        console.print("[dim]No application-related emails found.[/dim]")
+        return
+
+    # Display results
+    table = Table(title=f"Inbox Scan ({len(matches)} matches)", show_header=True)
+    table.add_column("Date", style="dim")
+    table.add_column("Status")
+    table.add_column("Subject")
+    table.add_column("Matched Job")
+
+    status_colors = {
+        "confirmation": "green",
+        "interview": "bold green",
+        "rejection": "red",
+        "follow_up": "yellow",
+    }
+
+    for m in matches:
+        date_short = m["date"][:10] if m["date"] else "?"
+        color = status_colors.get(m["classification"], "white")
+        status_display = f"[{color}]{m['classification']}[/{color}]"
+        job_match = (m["matched_jobs"][0].get("title") or "untitled")[:30] if m["matched_jobs"] else "[dim]unmatched[/dim]"
+        table.add_row(date_short, status_display, m["subject"][:50], job_match)
+
+    console.print(table)
+
+    if dry_run:
+        console.print("\n[dim]Run without --dry-run to update the database.[/dim]")
+        return
+
+    result = update_from_inbox(matches)
+    console.print(f"\n[green]Updated {result['updated']} jobs[/green], {result['unmatched']} unmatched")
+
+
+@app.command()
+def landing(
+    min_score: int = typer.Option(7, "--min-score", help="Minimum fit score for page generation."),
+    limit: int = typer.Option(20, "--limit", "-l", help="Max pages to generate."),
+    url: Optional[str] = typer.Option(None, "--url", help="Generate for a specific job URL only."),
+    base_url: str = typer.Option("https://hire.nickjensen.co", "--base-url", help="Base URL for deployed pages."),
+    deploy: bool = typer.Option(False, "--deploy", help="Deploy to GitHub Pages after generation."),
+    repo_path: Optional[str] = typer.Option(None, "--repo-path", help="Local path to GitHub Pages repo."),
+) -> None:
+    """Generate personalized landing pages with voice pitch for job applications."""
+    _bootstrap()
+
+    from applypilot.config import check_tier
+    check_tier(2, "landing page generation")
+
+    if url:
+        # Single job mode
+        from applypilot.database import get_connection
+        from applypilot.config import load_profile
+        from applypilot.voice import generate_pitch
+        from applypilot.landing import generate_landing_page
+
+        conn = get_connection()
+        row = conn.execute("SELECT * FROM jobs WHERE url = ?", (url,)).fetchone()
+        if not row:
+            console.print(f"[red]Job not found:[/red] {url}")
+            raise typer.Exit(code=1)
+
+        job = dict(zip(row.keys(), row))
+        profile = load_profile()
+
+        console.print(f"[cyan]Generating pitch for {job['title'][:40]} @ {job['site'][:20]}...[/cyan]")
+        pitch = generate_pitch(job, profile)
+
+        console.print("[cyan]Generating landing page...[/cyan]")
+        page = generate_landing_page(
+            job,
+            pitch_script=pitch.get("script"),
+            audio_path=pitch.get("audio_path"),
+            profile=profile,
+            base_url=base_url,
+        )
+
+        # Update DB
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "UPDATE jobs SET landing_page_path=?, landing_page_url=?, "
+            "pitch_script=?, pitch_audio_path=?, landing_page_at=? WHERE url=?",
+            (page["path"], page["url"], pitch.get("script"), pitch.get("audio_path"), now, url),
+        )
+        conn.commit()
+
+        console.print(f"\n[green]Landing page generated:[/green]")
+        console.print(f"  File: {page['path']}")
+        console.print(f"  URL:  {page['url']}")
+        if pitch.get("audio_path"):
+            console.print(f"  Audio: {pitch['audio_path']}")
+
+    else:
+        # Batch mode
+        from applypilot.landing import run_landing_pages
+
+        result = run_landing_pages(min_score=min_score, limit=limit)
+        console.print(f"\n[bold]Landing Pages[/bold]")
+        console.print(f"  Generated: {result['generated']}")
+        console.print(f"  Errors:    {result['errors']}")
+        console.print(f"  Time:      {result['elapsed']:.1f}s")
+
+    # Deploy if requested
+    if deploy:
+        from pathlib import Path
+        from applypilot.landing import deploy_to_github_pages
+
+        rp = Path(repo_path) if repo_path else None
+        console.print("\n[cyan]Deploying to GitHub Pages...[/cyan]")
+        count = deploy_to_github_pages(repo_path=rp)
+        if count > 0:
+            console.print(f"[green]Deployed {count} pages to hire.nickjensen.co[/green]")
+        else:
+            console.print("[dim]No pages to deploy.[/dim]")
 
 
 if __name__ == "__main__":

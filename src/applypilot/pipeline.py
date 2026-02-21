@@ -32,15 +32,16 @@ console = Console()
 # Stage definitions
 # ---------------------------------------------------------------------------
 
-STAGE_ORDER = ("discover", "enrich", "score", "tailor", "cover", "pdf")
+STAGE_ORDER = ("discover", "enrich", "score", "tailor", "cover", "pdf", "landing")
 
 STAGE_META: dict[str, dict] = {
-    "discover": {"desc": "Job discovery (JobSpy + Workday + smart extract)"},
+    "discover": {"desc": "Job discovery (JobSpy + Workday + Greenhouse + Lever + Ashby + HN hiring + smart extract)"},
     "enrich":   {"desc": "Detail enrichment (full descriptions + apply URLs)"},
     "score":    {"desc": "LLM scoring (fit 1-10)"},
     "tailor":   {"desc": "Resume tailoring (LLM + validation)"},
     "cover":    {"desc": "Cover letter generation"},
     "pdf":      {"desc": "PDF conversion (tailored resumes + cover letters)"},
+    "landing":  {"desc": "Landing page + voice pitch generation (ElevenLabs TTS)"},
 }
 
 # Upstream dependency: a stage only finishes when its upstream is done AND
@@ -52,6 +53,7 @@ _UPSTREAM: dict[str, str | None] = {
     "tailor":   "score",
     "cover":    "tailor",
     "pdf":      "cover",
+    "landing":  "cover",
 }
 
 
@@ -60,8 +62,11 @@ _UPSTREAM: dict[str, str | None] = {
 # ---------------------------------------------------------------------------
 
 def _run_discover(workers: int = 1) -> dict:
-    """Stage: Job discovery — JobSpy, Workday, and smart-extract scrapers."""
-    stats: dict = {"jobspy": None, "workday": None, "smartextract": None}
+    """Stage: Job discovery — JobSpy, Workday, Greenhouse, Lever, Ashby, HN hiring, and smart-extract scrapers."""
+    stats: dict = {
+        "jobspy": None, "workday": None, "greenhouse": None,
+        "lever": None, "ashby": None, "hn_hiring": None, "smartextract": None,
+    }
 
     # JobSpy
     console.print("  [cyan]JobSpy full crawl...[/cyan]")
@@ -84,6 +89,52 @@ def _run_discover(workers: int = 1) -> dict:
         log.error("Workday scraper failed: %s", e)
         console.print(f"  [red]Workday error:[/red] {e}")
         stats["workday"] = f"error: {e}"
+
+    # Greenhouse corporate scraper
+    console.print("  [cyan]Greenhouse corporate scraper...[/cyan]")
+    try:
+        from applypilot.discovery.greenhouse import run_greenhouse_discovery
+        run_greenhouse_discovery(workers=workers)
+        stats["greenhouse"] = "ok"
+    except Exception as e:
+        log.error("Greenhouse scraper failed: %s", e)
+        console.print(f"  [red]Greenhouse error:[/red] {e}")
+        stats["greenhouse"] = f"error: {e}"
+
+    # Lever corporate scraper
+    console.print("  [cyan]Lever corporate scraper...[/cyan]")
+    try:
+        from applypilot.discovery.lever import run_lever_discovery
+        run_lever_discovery(workers=workers)
+        stats["lever"] = "ok"
+    except Exception as e:
+        log.error("Lever scraper failed: %s", e)
+        console.print(f"  [red]Lever error:[/red] {e}")
+        stats["lever"] = f"error: {e}"
+
+    # Ashby corporate scraper
+    console.print("  [cyan]Ashby corporate scraper...[/cyan]")
+    try:
+        from applypilot.discovery.ashby import run_ashby_discovery
+        run_ashby_discovery(workers=workers)
+        stats["ashby"] = "ok"
+    except Exception as e:
+        log.error("Ashby scraper failed: %s", e)
+        console.print(f"  [red]Ashby error:[/red] {e}")
+        stats["ashby"] = f"error: {e}"
+
+    # Hacker News "Who is Hiring?"
+    console.print("  [cyan]Hacker News 'Who is Hiring?' scraper...[/cyan]")
+    try:
+        from applypilot.discovery.hn_hiring import run_hn_discovery
+        hn_result = run_hn_discovery()
+        stats["hn_hiring"] = "ok" if hn_result.get("thread_id") else "no thread found"
+        if hn_result.get("new"):
+            console.print(f"    Found {hn_result['new']} new HN postings")
+    except Exception as e:
+        log.error("HN hiring scraper failed: %s", e)
+        console.print(f"  [red]HN hiring error:[/red] {e}")
+        stats["hn_hiring"] = f"error: {e}"
 
     # Smart extract
     console.print("  [cyan]Smart extract (AI-powered scraping)...[/cyan]")
@@ -121,22 +172,22 @@ def _run_score() -> dict:
         return {"status": f"error: {e}"}
 
 
-def _run_tailor(min_score: int = 7) -> dict:
+def _run_tailor(min_score: int = 7, use_agent: bool = False, agent_model: str = "sonnet") -> dict:
     """Stage: Resume tailoring — generate tailored resumes for high-fit jobs."""
     try:
         from applypilot.scoring.tailor import run_tailoring
-        run_tailoring(min_score=min_score)
+        run_tailoring(min_score=min_score, use_agent=use_agent, agent_model=agent_model)
         return {"status": "ok"}
     except Exception as e:
         log.error("Tailoring failed: %s", e)
         return {"status": f"error: {e}"}
 
 
-def _run_cover(min_score: int = 7) -> dict:
+def _run_cover(min_score: int = 7, use_agent: bool = False, agent_model: str = "sonnet") -> dict:
     """Stage: Cover letter generation."""
     try:
         from applypilot.scoring.cover_letter import run_cover_letters
-        run_cover_letters(min_score=min_score)
+        run_cover_letters(min_score=min_score, use_agent=use_agent, agent_model=agent_model)
         return {"status": "ok"}
     except Exception as e:
         log.error("Cover letter generation failed: %s", e)
@@ -154,6 +205,17 @@ def _run_pdf() -> dict:
         return {"status": f"error: {e}"}
 
 
+def _run_landing(min_score: int = 7) -> dict:
+    """Stage: Landing page + voice pitch generation."""
+    try:
+        from applypilot.landing import run_landing_pages
+        result = run_landing_pages(min_score=min_score)
+        return {"status": "ok", **result}
+    except Exception as e:
+        log.error("Landing page generation failed: %s", e)
+        return {"status": f"error: {e}"}
+
+
 # Map stage names to their runner functions
 _STAGE_RUNNERS: dict[str, callable] = {
     "discover": _run_discover,
@@ -162,6 +224,7 @@ _STAGE_RUNNERS: dict[str, callable] = {
     "tailor":   _run_tailor,
     "cover":    _run_cover,
     "pdf":      _run_pdf,
+    "landing":  _run_landing,
 }
 
 
@@ -238,6 +301,12 @@ _PENDING_SQL: dict[str, str] = {
         "SELECT COUNT(*) FROM jobs WHERE tailored_resume_path IS NOT NULL "
         "AND tailored_resume_path LIKE '%.txt'"
     ),
+    "landing": (
+        "SELECT COUNT(*) FROM jobs WHERE fit_score >= ? "
+        "AND cover_letter_path IS NOT NULL "
+        "AND full_description IS NOT NULL "
+        "AND (landing_page_path IS NULL OR landing_page_path = '')"
+    ),
 }
 
 # How long to sleep between polling loops in streaming mode (seconds)
@@ -270,7 +339,7 @@ def _run_stage_streaming(
     """
     runner = _STAGE_RUNNERS[stage]
     kwargs: dict = {}
-    if stage in ("tailor", "cover"):
+    if stage in ("tailor", "cover", "landing"):
         kwargs["min_score"] = min_score
     if stage in ("discover", "enrich"):
         kwargs["workers"] = workers
@@ -321,7 +390,8 @@ def _run_stage_streaming(
 # Pipeline orchestrators
 # ---------------------------------------------------------------------------
 
-def _run_sequential(ordered: list[str], min_score: int, workers: int = 1) -> dict:
+def _run_sequential(ordered: list[str], min_score: int, workers: int = 1,
+                     use_agent: bool = False, agent_model: str = "sonnet") -> dict:
     """Execute stages one at a time (original behavior)."""
     results: list[dict] = []
     errors: dict[str, str] = {}
@@ -340,6 +410,10 @@ def _run_sequential(ordered: list[str], min_score: int, workers: int = 1) -> dic
         try:
             kwargs: dict = {}
             if name in ("tailor", "cover"):
+                kwargs["min_score"] = min_score
+                kwargs["use_agent"] = use_agent
+                kwargs["agent_model"] = agent_model
+            if name == "landing":
                 kwargs["min_score"] = min_score
             if name in ("discover", "enrich"):
                 kwargs["workers"] = workers
@@ -373,7 +447,8 @@ def _run_sequential(ordered: list[str], min_score: int, workers: int = 1) -> dic
     return {"stages": results, "errors": errors, "elapsed": total_elapsed}
 
 
-def _run_streaming(ordered: list[str], min_score: int, workers: int = 1) -> dict:
+def _run_streaming(ordered: list[str], min_score: int, workers: int = 1,
+                    use_agent: bool = False, agent_model: str = "sonnet") -> dict:
     """Execute stages concurrently with DB as conveyor belt."""
     tracker = _StageTracker()
     stop_event = threading.Event()
@@ -442,6 +517,8 @@ def run_pipeline(
     dry_run: bool = False,
     stream: bool = False,
     workers: int = 1,
+    use_agent: bool = False,
+    agent_model: str = "sonnet",
 ) -> dict:
     """Run pipeline stages.
 
@@ -490,9 +567,11 @@ def run_pipeline(
 
     # Execute
     if stream:
-        result = _run_streaming(ordered, min_score, workers=workers)
+        result = _run_streaming(ordered, min_score, workers=workers,
+                                use_agent=use_agent, agent_model=agent_model)
     else:
-        result = _run_sequential(ordered, min_score, workers=workers)
+        result = _run_sequential(ordered, min_score, workers=workers,
+                                 use_agent=use_agent, agent_model=agent_model)
 
     # Summary table
     console.print(f"\n{'=' * 70}")
@@ -524,6 +603,7 @@ def run_pipeline(
     console.print(f"    Scored:         {final['scored']}")
     console.print(f"    Tailored:       {final['tailored']}")
     console.print(f"    Cover letters:  {final['with_cover_letter']}")
+    console.print(f"    Landing pages:  {final.get('landing_pages', 0)}")
     console.print(f"    Ready to apply: {final['ready_to_apply']}")
     console.print(f"    Applied:        {final['applied']}")
     console.print(f"{'=' * 70}\n")
