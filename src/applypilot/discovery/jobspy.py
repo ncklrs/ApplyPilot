@@ -74,45 +74,12 @@ def _scrape_with_retry(kwargs: dict, max_retries: int = 2, backoff: float = 5.0)
                 raise
 
 
-# -- Location filtering ------------------------------------------------------
+# -- Location filtering (delegated to shared utils) -------------------------
 
-def _load_location_config(search_cfg: dict) -> tuple[list[str], list[str]]:
-    """Extract accept/reject location lists from search config.
-
-    Falls back to sensible defaults if not defined in the YAML.
-    """
-    accept = search_cfg.get("location_accept", [])
-    reject = search_cfg.get("location_reject_non_remote", [])
-    return accept, reject
-
-
-def _location_ok(location: str | None, accept: list[str], reject: list[str]) -> bool:
-    """Check if a job location passes the user's location filter.
-
-    Remote jobs are always accepted. Non-remote jobs must match an accept
-    pattern and not match a reject pattern.
-    """
-    if not location:
-        return True  # unknown location -- keep it, let scorer decide
-
-    loc = location.lower()
-
-    # Remote jobs always OK
-    if any(r in loc for r in ("remote", "anywhere", "work from home", "wfh", "distributed")):
-        return True
-
-    # Reject non-remote matches
-    for r in reject:
-        if r.lower() in loc:
-            return False
-
-    # Accept matches
-    for a in accept:
-        if a.lower() in loc:
-            return True
-
-    # No match -- reject unknown
-    return False
+from applypilot.discovery.utils import (  # noqa: E402
+    load_location_filter as _load_location_config,
+    location_ok as _location_ok,
+)
 
 
 # -- DB storage (JobSpy DataFrame -> SQLite) ---------------------------------

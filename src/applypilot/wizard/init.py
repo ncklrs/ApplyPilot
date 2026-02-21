@@ -37,7 +37,11 @@ console = Console()
 
 def _setup_resume() -> None:
     """Prompt for resume file and copy into APP_DIR."""
-    console.print(Panel("[bold]Step 1: Resume[/bold]\nPoint to your master resume file (.txt or .pdf)."))
+    console.print(Panel(
+        "[bold]Step 1: Resume[/bold]\n"
+        "Point to your master resume file.\n"
+        "Supported: .txt, .pdf, .docx, .md"
+    ))
 
     while True:
         path_str = Prompt.ask("Resume file path")
@@ -48,8 +52,9 @@ def _setup_resume() -> None:
             continue
 
         suffix = src.suffix.lower()
-        if suffix not in (".txt", ".pdf"):
-            console.print("[red]Unsupported format.[/red] Provide a .txt or .pdf file.")
+        supported = (".txt", ".pdf", ".docx", ".doc", ".md", ".markdown")
+        if suffix not in supported:
+            console.print(f"[red]Unsupported format.[/red] Provide one of: {', '.join(supported)}")
             continue
 
         if suffix == ".txt":
@@ -58,12 +63,25 @@ def _setup_resume() -> None:
         elif suffix == ".pdf":
             shutil.copy2(src, RESUME_PDF_PATH)
             console.print(f"[green]Copied to {RESUME_PDF_PATH}[/green]")
+            _auto_convert_resume(src, suffix)
+        else:
+            # .docx, .md, .markdown -- auto-convert to plain text
+            _auto_convert_resume(src, suffix)
+        break
 
-            # Also ask for a plain-text version for LLM consumption
-            txt_path_str = Prompt.ask(
-                "Plain-text version of your resume (.txt)",
-                default="",
-            )
+
+def _auto_convert_resume(src: Path, suffix: str) -> None:
+    """Auto-convert non-txt resume to plain text using resume_parser."""
+    try:
+        from applypilot.resume_parser import convert_resume
+        console.print(f"[dim]Auto-converting {suffix} to plain text...[/dim]")
+        text = convert_resume(src, output_path=RESUME_PATH)
+        console.print(f"[green]Converted and saved to {RESUME_PATH}[/green] ({len(text)} chars)")
+    except ImportError as e:
+        console.print(f"[yellow]Auto-conversion not available: {e}[/yellow]")
+        if suffix == ".pdf":
+            console.print("[dim]Provide a plain-text version manually, or install: pip install applypilot[resume][/dim]")
+            txt_path_str = Prompt.ask("Plain-text version of your resume (.txt)", default="")
             if txt_path_str.strip():
                 txt_src = Path(txt_path_str.strip().strip('"').strip("'")).expanduser().resolve()
                 if txt_src.exists():
@@ -71,7 +89,9 @@ def _setup_resume() -> None:
                     console.print(f"[green]Copied to {RESUME_PATH}[/green]")
                 else:
                     console.print("[yellow]File not found, skipping plain-text copy.[/yellow]")
-        break
+    except Exception as e:
+        console.print(f"[yellow]Conversion failed: {e}[/yellow]")
+        console.print("[dim]You can convert manually later with: applypilot convert-resume <file>[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -233,10 +253,13 @@ def _setup_ai_features() -> None:
         console.print("[dim]Discovery-only mode. You can configure AI later with [bold]applypilot init[/bold].[/dim]")
         return
 
-    console.print("Supported providers: [bold]Gemini[/bold] (recommended, free tier), OpenAI, local (Ollama/llama.cpp)")
+    console.print(
+        "Supported providers: [bold]Gemini[/bold] (recommended, free tier), "
+        "OpenAI, Anthropic (Claude), local (Ollama/llama.cpp)"
+    )
     provider = Prompt.ask(
         "Provider",
-        choices=["gemini", "openai", "local"],
+        choices=["gemini", "openai", "anthropic", "local"],
         default="gemini",
     )
 
@@ -251,6 +274,11 @@ def _setup_ai_features() -> None:
         api_key = Prompt.ask("OpenAI API key")
         model = Prompt.ask("Model", default="gpt-4o-mini")
         env_lines.append(f"OPENAI_API_KEY={api_key}")
+        env_lines.append(f"LLM_MODEL={model}")
+    elif provider == "anthropic":
+        api_key = Prompt.ask("Anthropic API key (from console.anthropic.com)")
+        model = Prompt.ask("Model", default="claude-sonnet-4-20250514")
+        env_lines.append(f"ANTHROPIC_API_KEY={api_key}")
         env_lines.append(f"LLM_MODEL={model}")
     elif provider == "local":
         url = Prompt.ask("Local LLM endpoint URL", default="http://localhost:8080/v1")

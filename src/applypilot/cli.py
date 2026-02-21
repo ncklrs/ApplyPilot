@@ -317,5 +317,72 @@ def dashboard() -> None:
     open_dashboard()
 
 
+@app.command()
+def dedup(
+    title_threshold: float = typer.Option(0.8, "--title-threshold", help="Min title similarity (0-1)."),
+    company_threshold: float = typer.Option(0.7, "--company-threshold", help="Min company name similarity (0-1)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report duplicates without deleting."),
+) -> None:
+    """Find and remove fuzzy duplicate job postings."""
+    _bootstrap()
+
+    from applypilot.dedup import remove_duplicates
+    from applypilot.database import get_connection
+
+    conn = get_connection()
+    result = remove_duplicates(
+        conn,
+        title_threshold=title_threshold,
+        company_threshold=company_threshold,
+        dry_run=dry_run,
+    )
+
+    console.print(f"\n[bold]Fuzzy Dedup Results[/bold]")
+    console.print(f"  Duplicate pairs found: {result['found']}")
+    console.print(f"  Removed: {result['removed']}")
+
+    if result["duplicates"]:
+        table = Table(title="Sample Duplicates", show_header=True)
+        table.add_column("Keep URL")
+        table.add_column("Remove URL")
+        table.add_column("Similarity", justify="right")
+        for keep, remove, sim in result["duplicates"]:
+            table.add_row(keep[:60], remove[:60], sim)
+        console.print(table)
+
+    if dry_run and result["found"]:
+        console.print("\n[dim]Run without --dry-run to delete duplicates.[/dim]")
+    console.print()
+
+
+@app.command(name="convert-resume")
+def convert_resume_cmd(
+    input_file: str = typer.Argument(..., help="Path to resume file (.pdf, .docx, .md, .txt)."),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output .txt path. Default: ~/.applypilot/resume.txt"),
+) -> None:
+    """Convert a resume from PDF/DOCX/Markdown to plain text."""
+    from pathlib import Path
+    from applypilot.resume_parser import convert_resume
+    from applypilot.config import RESUME_PATH
+
+    src = Path(input_file).expanduser().resolve()
+    if not src.exists():
+        console.print(f"[red]File not found:[/red] {src}")
+        raise typer.Exit(code=1)
+
+    out_path = Path(output) if output else RESUME_PATH
+
+    try:
+        text = convert_resume(src, output_path=out_path)
+        console.print(f"[green]Converted {src.name} -> {out_path}[/green] ({len(text)} chars)")
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1)
+    except ImportError as e:
+        console.print(f"[red]{e}[/red]")
+        console.print("[dim]Install optional deps: pip install applypilot[resume][/dim]")
+        raise typer.Exit(code=1)
+
+
 if __name__ == "__main__":
     app()
