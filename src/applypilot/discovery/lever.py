@@ -142,6 +142,11 @@ def search_employer(
         if additional:
             description += "\n\n" + strip_html(additional)
 
+        # Detect remote from workplaceType field (e.g. "remote", "hybrid")
+        workplace_type = (categories.get("workplaceType", "") if isinstance(categories, dict) else "").lower()
+        if workplace_type in ("remote", "hybrid") and location_str and "remote" not in location_str.lower():
+            location_str = f"{location_str} ({workplace_type.title()})"
+
         apply_url = job.get("applyUrl") or job.get("hostedUrl", "")
 
         matched.append({

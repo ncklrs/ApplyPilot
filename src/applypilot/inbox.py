@@ -237,7 +237,8 @@ def scan_inbox(
     # Calculate date range
     since_date = (datetime.now() - timedelta(days=since_days)).strftime("%d-%b-%Y")
 
-    log.info("Connecting to %s as %s...", host, email_addr)
+    masked = email_addr.split("@")[0][:3] + "***@" + email_addr.split("@")[-1] if "@" in email_addr else "***"
+    log.info("Connecting to %s as %s...", host, masked)
 
     try:
         imap = imaplib.IMAP4_SSL(host)
@@ -300,7 +301,10 @@ def scan_inbox(
             matched_jobs = match_to_jobs(sender_domain)
 
             date_str = msg.get("Date", "") or hdr_msg.get("Date", "")
-            parsed_date = email.utils.parsedate_to_datetime(date_str) if date_str else None
+            try:
+                parsed_date = email.utils.parsedate_to_datetime(date_str) if date_str else None
+            except (ValueError, TypeError):
+                parsed_date = None
 
             matches.append({
                 "subject": subject,

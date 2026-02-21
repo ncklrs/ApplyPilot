@@ -82,7 +82,7 @@ def generate_dashboard(output_path: str | None = None) -> str:
         ORDER BY fit_score DESC, site, title
     """).fetchall()
 
-    # Kanban board data — jobs with score >= 7 grouped by pipeline stage
+    # Kanban board data — jobs with score >= 5 grouped by pipeline stage
     kanban_jobs = conn.execute("""
         SELECT url, title, site, location, salary, fit_score,
                full_description IS NOT NULL as has_desc,
@@ -452,8 +452,8 @@ def generate_dashboard(output_path: str | None = None) -> str:
 </div>
 
 <div class="tab-nav">
-  <button class="tab-btn active" onclick="switchTab('grid')">Grid View</button>
-  <button class="tab-btn" onclick="switchTab('kanban')">Kanban Board</button>
+  <button class="tab-btn active" onclick="switchTab('grid', this)">Grid View</button>
+  <button class="tab-btn" onclick="switchTab('kanban', this)">Kanban Board</button>
 </div>
 
 <div id="tab-kanban" class="tab-content">
@@ -536,11 +536,11 @@ function applyFilters() {{
 
 applyFilters();
 
-function switchTab(tab) {{
+function switchTab(tab, el) {{
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
-  event.target.classList.add('active');
+  el.classList.add('active');
 }}
 </script>
 

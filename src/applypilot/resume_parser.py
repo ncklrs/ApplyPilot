@@ -15,9 +15,7 @@ log = logging.getLogger(__name__)
 def extract_text_from_pdf(pdf_path: Path) -> str:
     """Extract text from a PDF file.
 
-    Uses Playwright to render the PDF in a browser and extract text,
-    which handles complex layouts better than pure Python PDF parsers.
-    Falls back to a simple text extraction if Playwright is unavailable.
+    Tries PyPDF2 first, then pdfminer.six as a fallback.
 
     Args:
         pdf_path: Path to the PDF file.

@@ -221,14 +221,15 @@ class LLMClient:
             "anthropic-version": "2023-06-01",
         }
 
-        # Extract system message from messages list into top-level field
-        system_text = None
+        # Extract system messages from messages list into top-level field
+        system_parts = []
         user_messages = []
         for msg in messages:
             if msg["role"] == "system":
-                system_text = msg["content"]
+                system_parts.append(msg["content"])
             else:
                 user_messages.append(msg)
+        system_text = "\n\n".join(system_parts) if system_parts else None
 
         payload: dict = {
             "model": self.model,

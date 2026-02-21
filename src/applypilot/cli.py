@@ -521,7 +521,7 @@ def inbox(
         date_short = m["date"][:10] if m["date"] else "?"
         color = status_colors.get(m["classification"], "white")
         status_display = f"[{color}]{m['classification']}[/{color}]"
-        job_match = m["matched_jobs"][0]["title"][:30] if m["matched_jobs"] else "[dim]unmatched[/dim]"
+        job_match = (m["matched_jobs"][0].get("title") or "untitled")[:30] if m["matched_jobs"] else "[dim]unmatched[/dim]"
         table.add_row(date_short, status_display, m["subject"][:50], job_match)
 
     console.print(table)

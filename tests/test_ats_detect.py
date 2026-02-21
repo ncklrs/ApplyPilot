@@ -4,7 +4,6 @@ import pytest
 from applypilot.discovery.ats_detect import (
     _check_patterns,
     _build_result,
-    detect_ats,
 )
 
 

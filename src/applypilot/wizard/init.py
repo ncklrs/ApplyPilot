@@ -77,18 +77,17 @@ def _auto_convert_resume(src: Path, suffix: str) -> None:
         console.print(f"[dim]Auto-converting {suffix} to plain text...[/dim]")
         text = convert_resume(src, output_path=RESUME_PATH)
         console.print(f"[green]Converted and saved to {RESUME_PATH}[/green] ({len(text)} chars)")
-    except ImportError as e:
+    except (ImportError, ValueError) as e:
         console.print(f"[yellow]Auto-conversion not available: {e}[/yellow]")
-        if suffix == ".pdf":
-            console.print("[dim]Provide a plain-text version manually, or install: pip install applypilot[resume][/dim]")
-            txt_path_str = Prompt.ask("Plain-text version of your resume (.txt)", default="")
-            if txt_path_str.strip():
-                txt_src = Path(txt_path_str.strip().strip('"').strip("'")).expanduser().resolve()
-                if txt_src.exists():
-                    shutil.copy2(txt_src, RESUME_PATH)
-                    console.print(f"[green]Copied to {RESUME_PATH}[/green]")
-                else:
-                    console.print("[yellow]File not found, skipping plain-text copy.[/yellow]")
+        console.print("[dim]Provide a plain-text version manually, or install: pip install applypilot[resume][/dim]")
+        txt_path_str = Prompt.ask("Plain-text version of your resume (.txt)", default="")
+        if txt_path_str.strip():
+            txt_src = Path(txt_path_str.strip().strip('"').strip("'")).expanduser().resolve()
+            if txt_src.exists():
+                shutil.copy2(txt_src, RESUME_PATH)
+                console.print(f"[green]Copied to {RESUME_PATH}[/green]")
+            else:
+                console.print("[yellow]File not found, skipping plain-text copy.[/yellow]")
     except Exception as e:
         console.print(f"[yellow]Conversion failed: {e}[/yellow]")
         console.print("[dim]You can convert manually later with: applypilot convert-resume <file>[/dim]")

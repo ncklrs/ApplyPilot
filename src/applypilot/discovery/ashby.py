@@ -142,8 +142,7 @@ def search_employer(
         if isinstance(location_str, dict):
             location_str = location_str.get("name", "")
 
-        # Also check for remote in employment type
-        employment_type = job.get("employmentType", "")
+        # Check the dedicated isRemote field
         is_remote = job.get("isRemote", False)
         if is_remote and location_str and "remote" not in location_str.lower():
             location_str = f"{location_str} (Remote)"

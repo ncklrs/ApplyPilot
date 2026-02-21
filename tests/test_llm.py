@@ -127,8 +127,8 @@ class TestLLMClient:
         client = llm.LLMClient("http://localhost:8080/v1", "local-model", "")
         assert client._is_anthropic is False
 
-    def test_anthropic_system_message_extraction(self):
-        """Verify the Anthropic backend correctly extracts system messages."""
+    def test_anthropic_client_setup(self):
+        """Verify the Anthropic backend is correctly detected and configured."""
         client = llm.LLMClient("https://api.anthropic.com", "claude-test", "key")
 
         messages = [

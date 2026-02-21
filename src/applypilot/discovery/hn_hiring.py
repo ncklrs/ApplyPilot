@@ -238,7 +238,7 @@ def run_hn_discovery() -> dict:
                 ),
             )
             new += 1
-        except Exception:
+        except sqlite3.IntegrityError:
             existing += 1
 
     conn.commit()
