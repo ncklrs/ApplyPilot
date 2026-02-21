@@ -46,31 +46,12 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
 
-# -- Location filtering -------------------------------------------------------
+# -- Location filtering (delegated to shared utils) -------------------------
 
-def _load_location_filter(search_cfg: dict | None = None):
-    """Load location accept/reject lists from search config."""
-    if search_cfg is None:
-        search_cfg = config.load_search_config()
-    accept = search_cfg.get("location_accept", [])
-    reject = search_cfg.get("location_reject_non_remote", [])
-    return accept, reject
-
-
-def _location_ok(location: str | None, accept: list[str], reject: list[str]) -> bool:
-    """Check if a job location passes the user's location filter."""
-    if not location:
-        return True
-    loc = location.lower()
-    if any(r in loc for r in ("remote", "anywhere", "work from home", "wfh", "distributed")):
-        return True
-    for r in reject:
-        if r.lower() in loc:
-            return False
-    for a in accept:
-        if a.lower() in loc:
-            return True
-    return False
+from applypilot.discovery.utils import (  # noqa: E402
+    load_location_filter as _load_location_filter,
+    location_ok as _location_ok,
+)
 
 
 # -- Site configuration from YAML --------------------------------------------
