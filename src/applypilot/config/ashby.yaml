@@ -91,3 +91,65 @@ employers:
   planetscale:
     name: "PlanetScale (via Ashby)"
     board_id: "planetscale"
+
+  # ── AI & ML (more) ────────────────────────────────────────────────────
+
+  together_ai:
+    name: "Together AI"
+    board_id: "togetherai"
+
+  groq:
+    name: "Groq"
+    board_id: "groq"
+
+  character_ai:
+    name: "Character.AI"
+    board_id: "characterai"
+
+  cursor:
+    name: "Cursor"
+    board_id: "cursor"
+
+  replicate:
+    name: "Replicate"
+    board_id: "replicate"
+
+  stability_ai:
+    name: "Stability AI"
+    board_id: "stabilityai"
+
+  # ── Developer Tools ───────────────────────────────────────────────────
+
+  supabase_ashby:
+    name: "Supabase (via Ashby)"
+    board_id: "supabase"
+
+  liveblocks:
+    name: "Liveblocks"
+    board_id: "liveblocks"
+
+  trigger_dev:
+    name: "Trigger.dev"
+    board_id: "triggerdev"
+
+  inngest:
+    name: "Inngest"
+    board_id: "inngest"
+
+  # ── Fintech & Enterprise ──────────────────────────────────────────────
+
+  mercury_ashby:
+    name: "Mercury (via Ashby)"
+    board_id: "mercury"
+
+  column_ashby:
+    name: "Column (via Ashby)"
+    board_id: "column"
+
+  lithic:
+    name: "Lithic"
+    board_id: "lithic"
+
+  plaid_ashby:
+    name: "Plaid (via Ashby)"
+    board_id: "plaid"

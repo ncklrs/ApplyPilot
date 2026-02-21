@@ -88,6 +88,8 @@ def run(
     stream: bool = typer.Option(False, "--stream", help="Run stages concurrently (streaming mode)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview stages without executing."),
     max_llm_calls: int = typer.Option(0, "--max-llm-calls", help="Cap total LLM calls for this run (0 = unlimited)."),
+    agent: bool = typer.Option(False, "--agent", help="Use Claude Code agent for tailor/cover (higher quality, requires claude CLI)."),
+    model: str = typer.Option("sonnet", "--model", "-m", help="Claude model for --agent mode (sonnet, haiku, opus)."),
 ) -> None:
     """Run pipeline stages: discover, enrich, score, tailor, cover, pdf."""
     _bootstrap()
@@ -115,12 +117,25 @@ def run(
         from applypilot.config import check_tier
         check_tier(2, "AI scoring/tailoring")
 
+    # Validate --agent mode
+    if agent:
+        from applypilot.scoring.agent import is_agent_available
+        if not is_agent_available():
+            console.print(
+                "[red]--agent requires Claude Code CLI.[/red]\n"
+                "Install from [bold]https://claude.ai/code[/bold] or omit --agent to use LLM API."
+            )
+            raise typer.Exit(code=1)
+        console.print("[cyan]Agent mode enabled — using Claude Code CLI for tailor/cover[/cyan]")
+
     result = run_pipeline(
         stages=stage_list,
         min_score=min_score,
         dry_run=dry_run,
         stream=stream,
         workers=workers,
+        use_agent=agent,
+        agent_model=model,
     )
 
     if result.get("errors"):
@@ -382,6 +397,141 @@ def convert_resume_cmd(
         console.print(f"[red]{e}[/red]")
         console.print("[dim]Install optional deps: pip install applypilot[resume][/dim]")
         raise typer.Exit(code=1)
+
+
+@app.command(name="discover-ats")
+def discover_ats_cmd(
+    url: str = typer.Argument(..., help="Company career page URL to probe."),
+) -> None:
+    """Auto-detect which ATS a company uses and output a YAML snippet."""
+    _bootstrap()
+
+    from applypilot.discovery.ats_detect import detect_ats
+
+    console.print(f"[cyan]Probing {url}...[/cyan]")
+
+    result = detect_ats(url)
+    if not result:
+        console.print("[yellow]No ATS detected.[/yellow] The site may use a custom career page.")
+        console.print("[dim]Tip: Try the direct career page URL (e.g. https://example.com/careers)[/dim]")
+        raise typer.Exit(code=1)
+
+    console.print(f"\n[green]Detected ATS:[/green] [bold]{result['ats'].upper()}[/bold]")
+    console.print(f"  Token: {result['token']}")
+    console.print(f"  Config: {result['config_file']}")
+    console.print(f"\n[bold]Add to {result['config_file']}:[/bold]")
+    console.print(f"\n{result['yaml_snippet']}")
+    console.print()
+
+
+@app.command()
+def track(
+    url: str = typer.Argument(..., help="Job URL to update."),
+    stage: Optional[str] = typer.Option(None, "--stage", "-s", help="Set manual stage (interview, offer, rejected, withdrawn)."),
+    notes: Optional[str] = typer.Option(None, "--notes", "-n", help="Add notes to this job."),
+) -> None:
+    """Manually track a job's stage or add notes."""
+    _bootstrap()
+
+    from applypilot.database import get_connection
+    from datetime import datetime, timezone
+
+    conn = get_connection()
+
+    # Verify job exists
+    row = conn.execute("SELECT url, title, site FROM jobs WHERE url = ?", (url,)).fetchone()
+    if not row:
+        console.print(f"[red]Job not found:[/red] {url}")
+        raise typer.Exit(code=1)
+
+    updates = []
+    params = []
+
+    if stage:
+        valid_stages = ("interview", "offer", "rejected", "withdrawn", "ghosted", "negotiating")
+        if stage not in valid_stages:
+            console.print(f"[red]Invalid stage:[/red] '{stage}'. Valid: {', '.join(valid_stages)}")
+            raise typer.Exit(code=1)
+        updates.append("user_stage = ?")
+        params.append(stage)
+
+    if notes:
+        updates.append("user_notes = ?")
+        params.append(notes)
+
+    if not updates:
+        console.print("[yellow]Specify --stage or --notes to update.[/yellow]")
+        raise typer.Exit(code=1)
+
+    params.append(url)
+    conn.execute(f"UPDATE jobs SET {', '.join(updates)} WHERE url = ?", params)
+    conn.commit()
+
+    console.print(f"[green]Updated:[/green] {row['title']} @ {row['site']}")
+    if stage:
+        console.print(f"  Stage: {stage}")
+    if notes:
+        console.print(f"  Notes: {notes}")
+
+
+@app.command()
+def inbox(
+    days: int = typer.Option(7, "--days", "-d", help="Look back this many days."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show matches without updating DB."),
+) -> None:
+    """Scan email inbox for application responses (confirmations, interviews, rejections)."""
+    _bootstrap()
+
+    from applypilot.inbox import scan_inbox, update_from_inbox
+
+    try:
+        matches = scan_inbox(since_days=days)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        console.print(
+            "\n[dim]Add to ~/.applypilot/.env:[/dim]\n"
+            "  IMAP_EMAIL=your@gmail.com\n"
+            "  IMAP_PASSWORD=your-app-password\n"
+            "\n[dim]Generate an App Password at: https://myaccount.google.com/apppasswords[/dim]"
+        )
+        raise typer.Exit(code=1)
+    except ConnectionError as e:
+        console.print(f"[red]Connection failed:[/red] {e}")
+        raise typer.Exit(code=1)
+
+    if not matches:
+        console.print("[dim]No application-related emails found.[/dim]")
+        return
+
+    # Display results
+    table = Table(title=f"Inbox Scan ({len(matches)} matches)", show_header=True)
+    table.add_column("Date", style="dim")
+    table.add_column("Status")
+    table.add_column("Subject")
+    table.add_column("Matched Job")
+
+    status_colors = {
+        "confirmation": "green",
+        "interview": "bold green",
+        "rejection": "red",
+        "follow_up": "yellow",
+    }
+
+    for m in matches:
+        date_short = m["date"][:10] if m["date"] else "?"
+        color = status_colors.get(m["classification"], "white")
+        status_display = f"[{color}]{m['classification']}[/{color}]"
+        job_match = m["matched_jobs"][0]["title"][:30] if m["matched_jobs"] else "[dim]unmatched[/dim]"
+        table.add_row(date_short, status_display, m["subject"][:50], job_match)
+
+    console.print(table)
+
+    if dry_run:
+        console.print("\n[dim]Run without --dry-run to update the database.[/dim]")
+        return
+
+    result = update_from_inbox(matches)
+    console.print(f"\n[green]Updated {result['updated']} jobs[/green], {result['unmatched']} unmatched")
 
 
 if __name__ == "__main__":

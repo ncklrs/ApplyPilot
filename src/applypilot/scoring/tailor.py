@@ -432,12 +432,15 @@ def tailor_resume(
 
 # ── Batch Entry Point ────────────────────────────────────────────────────
 
-def run_tailoring(min_score: int = 7, limit: int = 20) -> dict:
+def run_tailoring(min_score: int = 7, limit: int = 20,
+                   use_agent: bool = False, agent_model: str = "sonnet") -> dict:
     """Generate tailored resumes for high-scoring jobs.
 
     Args:
         min_score: Minimum fit_score to tailor for.
         limit: Maximum jobs to process.
+        use_agent: If True, use Claude Code agent instead of LLM API.
+        agent_model: Claude model name for agent mode.
 
     Returns:
         {"approved": int, "failed": int, "errors": int, "elapsed": float}
@@ -453,7 +456,9 @@ def run_tailoring(min_score: int = 7, limit: int = 20) -> dict:
         return {"approved": 0, "failed": 0, "errors": 0, "elapsed": 0.0}
 
     TAILORED_DIR.mkdir(parents=True, exist_ok=True)
-    log.info("Tailoring resumes for %d jobs (score >= %d)...", len(jobs), min_score)
+
+    mode = "agent" if use_agent else "LLM API"
+    log.info("Tailoring resumes for %d jobs (score >= %d, mode=%s)...", len(jobs), min_score, mode)
     t0 = time.time()
     completed = 0
     results: list[dict] = []
@@ -462,7 +467,11 @@ def run_tailoring(min_score: int = 7, limit: int = 20) -> dict:
     for job in jobs:
         completed += 1
         try:
-            tailored, report = tailor_resume(resume_text, job, profile)
+            if use_agent:
+                from applypilot.scoring.agent import tailor_via_agent
+                tailored, report = tailor_via_agent(resume_text, job, profile, model=agent_model)
+            else:
+                tailored, report = tailor_resume(resume_text, job, profile)
 
             # Build safe filename prefix
             safe_title = re.sub(r"[^\w\s-]", "", job["title"])[:50].strip().replace(" ", "_")

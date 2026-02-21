@@ -152,6 +152,10 @@ employers:
     name: "PlanetScale"
     board_token: "planetscale"
 
+  snowflake:
+    name: "Snowflake"
+    board_token: "snowflake"
+
   # ── Communication ────────────────────────────────────────────────────────
 
   twilio:
@@ -161,3 +165,103 @@ employers:
   hubspot:
     name: "HubSpot"
     board_token: "hubspot"
+
+  # ── Marketplace & E-Commerce ──────────────────────────────────────────
+
+  instacart:
+    name: "Instacart"
+    board_token: "instacart"
+
+  doordash:
+    name: "DoorDash"
+    board_token: "doordash"
+
+  airbnb:
+    name: "Airbnb"
+    board_token: "airbnb"
+
+  robinhood:
+    name: "Robinhood"
+    board_token: "robinhood"
+
+  # ── Security & DevOps ─────────────────────────────────────────────────
+
+  pagerduty:
+    name: "PagerDuty"
+    board_token: "pagerduty"
+
+  launchdarkly:
+    name: "LaunchDarkly"
+    board_token: "launchdarkly"
+
+  sentry:
+    name: "Sentry"
+    board_token: "sentry"
+
+  cockroachlabs:
+    name: "Cockroach Labs"
+    board_token: "cockroachlabs"
+
+  # ── AI & ML ───────────────────────────────────────────────────────────
+
+  openai:
+    name: "OpenAI"
+    board_token: "openai"
+
+  deepmind:
+    name: "Google DeepMind"
+    board_token: "deepmind"
+
+  huggingface:
+    name: "Hugging Face"
+    board_token: "huggingface"
+
+  wandb:
+    name: "Weights & Biases"
+    board_token: "wandb"
+
+  # ── Productivity & SaaS ───────────────────────────────────────────────
+
+  asana:
+    name: "Asana"
+    board_token: "asana"
+
+  okta:
+    name: "Okta"
+    board_token: "okta"
+
+  temporal:
+    name: "Temporal"
+    board_token: "temporal"
+
+  stytch:
+    name: "Stytch"
+    board_token: "stytch"
+
+  render:
+    name: "Render"
+    board_token: "render"
+
+  hex:
+    name: "Hex"
+    board_token: "hex"
+
+  modal:
+    name: "Modal"
+    board_token: "modal"
+
+  anyscale:
+    name: "Anyscale"
+    board_token: "anyscale"
+
+  benchling:
+    name: "Benchling"
+    board_token: "benchling"
+
+  verkada:
+    name: "Verkada"
+    board_token: "verkada"
+
+  navan:
+    name: "Navan"
+    board_token: "navan"

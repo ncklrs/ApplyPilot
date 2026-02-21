@@ -87,3 +87,81 @@ employers:
   fly_io:
     name: "Fly.io"
     company_slug: "fly-io"
+
+  # ── More Tech ──────────────────────────────────────────────────────────
+
+  square:
+    name: "Square"
+    company_slug: "squareup"
+
+  dropbox:
+    name: "Dropbox"
+    company_slug: "dropbox"
+
+  lyft:
+    name: "Lyft"
+    company_slug: "lyft"
+
+  cruise:
+    name: "Cruise"
+    company_slug: "cruise"
+
+  nuro:
+    name: "Nuro"
+    company_slug: "nuro"
+
+  moveworks:
+    name: "Moveworks"
+    company_slug: "moveworks"
+
+  descript:
+    name: "Descript"
+    company_slug: "descript"
+
+  replit:
+    name: "Replit"
+    company_slug: "replit"
+
+  figma_lever:
+    name: "Figma (via Lever)"
+    company_slug: "figma"
+
+  plaid_lever:
+    name: "Plaid (via Lever)"
+    company_slug: "plaid"
+
+  # ── Fintech & Crypto ──────────────────────────────────────────────────
+
+  stripe_lever:
+    name: "Stripe (via Lever)"
+    company_slug: "stripe"
+
+  kraken:
+    name: "Kraken"
+    company_slug: "kraken"
+
+  anchorage:
+    name: "Anchorage Digital"
+    company_slug: "anchorage"
+
+  chainalysis:
+    name: "Chainalysis"
+    company_slug: "chainalysis"
+
+  # ── Enterprise & SaaS ─────────────────────────────────────────────────
+
+  atlassian:
+    name: "Atlassian"
+    company_slug: "atlassian"
+
+  zapier:
+    name: "Zapier"
+    company_slug: "zapier"
+
+  notion_lever:
+    name: "Notion (via Lever)"
+    company_slug: "notion"
+
+  hashicorp_lever:
+    name: "HashiCorp (via Lever)"
+    company_slug: "hashicorp"

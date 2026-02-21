@@ -169,12 +169,15 @@ def generate_cover_letter(
 
 # ── Batch Entry Point ────────────────────────────────────────────────────
 
-def run_cover_letters(min_score: int = 7, limit: int = 20) -> dict:
+def run_cover_letters(min_score: int = 7, limit: int = 20,
+                      use_agent: bool = False, agent_model: str = "sonnet") -> dict:
     """Generate cover letters for high-scoring jobs that have tailored resumes.
 
     Args:
         min_score: Minimum fit_score threshold.
         limit: Maximum jobs to process.
+        use_agent: If True, use Claude Code agent instead of LLM API.
+        agent_model: Claude model name for agent mode.
 
     Returns:
         {"generated": int, "errors": int, "elapsed": float}
@@ -204,9 +207,11 @@ def run_cover_letters(min_score: int = 7, limit: int = 20) -> dict:
         jobs = [dict(zip(columns, row)) for row in jobs]
 
     COVER_LETTER_DIR.mkdir(parents=True, exist_ok=True)
+
+    mode = "agent" if use_agent else "LLM API"
     log.info(
-        "Generating cover letters for %d jobs (score >= %d)...",
-        len(jobs), min_score,
+        "Generating cover letters for %d jobs (score >= %d, mode=%s)...",
+        len(jobs), min_score, mode,
     )
     t0 = time.time()
     completed = 0
@@ -216,7 +221,11 @@ def run_cover_letters(min_score: int = 7, limit: int = 20) -> dict:
     for job in jobs:
         completed += 1
         try:
-            letter = generate_cover_letter(resume_text, job, profile)
+            if use_agent:
+                from applypilot.scoring.agent import cover_via_agent
+                letter = cover_via_agent(resume_text, job, profile, model=agent_model)
+            else:
+                letter = generate_cover_letter(resume_text, job, profile)
 
             # Build safe filename prefix
             safe_title = re.sub(r"[^\w\s-]", "", job["title"])[:50].strip().replace(" ", "_")

@@ -82,6 +82,117 @@ def generate_dashboard(output_path: str | None = None) -> str:
         ORDER BY fit_score DESC, site, title
     """).fetchall()
 
+    # Kanban board data — jobs with score >= 7 grouped by pipeline stage
+    kanban_jobs = conn.execute("""
+        SELECT url, title, site, location, salary, fit_score,
+               full_description IS NOT NULL as has_desc,
+               tailored_resume_path IS NOT NULL as has_resume,
+               cover_letter_path IS NOT NULL as has_cover,
+               apply_status, applied_at,
+               user_stage, user_notes, inbox_status,
+               application_url
+        FROM jobs
+        WHERE fit_score >= 5
+        ORDER BY fit_score DESC, title
+    """).fetchall()
+
+    # Build kanban columns
+    kanban_columns = {
+        "discovered": [],
+        "enriched": [],
+        "scored": [],
+        "tailored": [],
+        "cover_letter": [],
+        "applied": [],
+        "interview": [],
+        "rejected": [],
+    }
+
+    for kj in kanban_jobs:
+        kj_dict = dict(zip(kj.keys(), kj))
+        # User stage overrides (interview, rejected, etc.)
+        if kj_dict.get("user_stage") in ("interview", "offer", "negotiating"):
+            kanban_columns["interview"].append(kj_dict)
+        elif kj_dict.get("user_stage") in ("rejected", "withdrawn", "ghosted"):
+            kanban_columns["rejected"].append(kj_dict)
+        elif kj_dict.get("inbox_status") == "interview":
+            kanban_columns["interview"].append(kj_dict)
+        elif kj_dict.get("inbox_status") == "rejection":
+            kanban_columns["rejected"].append(kj_dict)
+        elif kj_dict.get("applied_at"):
+            kanban_columns["applied"].append(kj_dict)
+        elif kj_dict.get("has_cover"):
+            kanban_columns["cover_letter"].append(kj_dict)
+        elif kj_dict.get("has_resume"):
+            kanban_columns["tailored"].append(kj_dict)
+        elif kj_dict.get("fit_score"):
+            kanban_columns["scored"].append(kj_dict)
+        elif kj_dict.get("has_desc"):
+            kanban_columns["enriched"].append(kj_dict)
+        else:
+            kanban_columns["discovered"].append(kj_dict)
+
+    # Build kanban HTML
+    column_meta = {
+        "discovered": {"label": "Discovered", "color": "#64748b", "icon": "&#x1F50D;"},
+        "enriched": {"label": "Enriched", "color": "#8b5cf6", "icon": "&#x1F4C4;"},
+        "scored": {"label": "Scored", "color": "#f59e0b", "icon": "&#x2B50;"},
+        "tailored": {"label": "Tailored", "color": "#3b82f6", "icon": "&#x1F4DD;"},
+        "cover_letter": {"label": "Cover Letter", "color": "#06b6d4", "icon": "&#x2709;"},
+        "applied": {"label": "Applied", "color": "#10b981", "icon": "&#x2705;"},
+        "interview": {"label": "Interview", "color": "#22c55e", "icon": "&#x1F3AF;"},
+        "rejected": {"label": "Rejected", "color": "#ef4444", "icon": "&#x274C;"},
+    }
+
+    kanban_html = ""
+    for col_key, col_info in column_meta.items():
+        col_jobs = kanban_columns[col_key]
+        count = len(col_jobs)
+        cards_html = ""
+        for kj in col_jobs[:50]:  # Limit per column
+            kj_score = kj.get("fit_score", 0) or 0
+            kj_color = "#10b981" if kj_score >= 7 else ("#f59e0b" if kj_score >= 5 else "#64748b")
+            kj_title = escape(str(kj.get("title", "Untitled"))[:50])
+            kj_site = escape(str(kj.get("site", ""))[:25])
+            kj_loc = escape(str(kj.get("location", ""))[:30])
+            kj_url = escape(str(kj.get("url", "")))
+            kj_apply = escape(str(kj.get("application_url", "") or ""))
+            kj_notes = escape(str(kj.get("user_notes", "") or ""))
+            kj_salary = escape(str(kj.get("salary", "") or ""))
+            kj_status = escape(str(kj.get("apply_status", "") or ""))
+            kj_inbox = escape(str(kj.get("inbox_status", "") or ""))
+
+            status_badge = ""
+            if kj_status:
+                s_color = "#10b981" if kj_status == "applied" else ("#ef4444" if kj_status == "failed" else "#f59e0b")
+                status_badge = f'<span class="kb-status" style="color:{s_color}">{kj_status}</span>'
+            if kj_inbox:
+                i_color = "#22c55e" if kj_inbox == "interview" else ("#ef4444" if kj_inbox == "rejection" else "#f59e0b")
+                status_badge += f' <span class="kb-status" style="color:{i_color}">{kj_inbox}</span>'
+
+            cards_html += f"""
+            <div class="kb-card">
+              <div class="kb-card-head">
+                <span class="kb-score" style="background:{kj_color}">{kj_score}</span>
+                <a href="{kj_url}" class="kb-title" target="_blank">{kj_title}</a>
+              </div>
+              <div class="kb-meta">{kj_site}{(' - ' + kj_loc) if kj_loc else ''}</div>
+              {f'<div class="kb-salary">{kj_salary}</div>' if kj_salary else ''}
+              {status_badge}
+              {f'<div class="kb-notes">{kj_notes}</div>' if kj_notes else ''}
+              {('<a href="' + kj_apply + '" class="kb-apply" target="_blank">Apply</a>') if kj_apply else ''}
+            </div>"""
+
+        kanban_html += f"""
+        <div class="kb-column">
+          <div class="kb-col-header" style="border-color:{col_info['color']}">
+            <span>{col_info['icon']}</span>
+            <span>{col_info['label']}</span>
+            <span class="kb-count" style="background:{col_info['color']}">{count}</span>
+          </div>
+          <div class="kb-cards">{cards_html}</div>
+        </div>"""
+
     # Color map per site
     colors = {
         "RemoteOK": "#10b981", "WelcomeToTheJungle": "#f59e0b",
@@ -291,10 +402,39 @@ def generate_dashboard(output_path: str | None = None) -> str:
   .hidden {{ display: none !important; }}
   .job-count {{ color: #94a3b8; font-size: 0.85rem; margin-bottom: 1rem; }}
 
+  /* Tab navigation */
+  .tab-nav {{ display: flex; gap: 0.5rem; margin-bottom: 2rem; }}
+  .tab-btn {{ background: #1e293b; border: 2px solid #334155; color: #94a3b8; padding: 0.6rem 1.2rem; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: all 0.15s; }}
+  .tab-btn:hover {{ border-color: #60a5fa; color: #e2e8f0; }}
+  .tab-btn.active {{ background: #60a5fa; border-color: #60a5fa; color: #0f172a; }}
+  .tab-content {{ display: none; }}
+  .tab-content.active {{ display: block; }}
+
+  /* Kanban board */
+  .kb-board {{ display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 1rem; min-height: 400px; }}
+  .kb-column {{ min-width: 260px; max-width: 300px; flex-shrink: 0; background: #1e293b; border-radius: 12px; padding: 0.75rem; display: flex; flex-direction: column; }}
+  .kb-col-header {{ display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; margin-bottom: 0.5rem; border-bottom: 3px solid; font-weight: 600; font-size: 0.9rem; }}
+  .kb-count {{ font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 10px; color: #0f172a; font-weight: 700; }}
+  .kb-cards {{ flex: 1; overflow-y: auto; max-height: 70vh; display: flex; flex-direction: column; gap: 0.5rem; }}
+  .kb-card {{ background: #0f172a; border-radius: 8px; padding: 0.75rem; border-left: 3px solid #334155; transition: all 0.15s; }}
+  .kb-card:hover {{ border-left-color: #60a5fa; transform: translateX(2px); }}
+  .kb-card-head {{ display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; }}
+  .kb-score {{ display: inline-flex; align-items: center; justify-content: center; min-width: 1.4rem; height: 1.4rem; border-radius: 5px; color: #0f172a; font-weight: 700; font-size: 0.7rem; flex-shrink: 0; }}
+  .kb-title {{ color: #e2e8f0; text-decoration: none; font-weight: 500; font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+  .kb-title:hover {{ color: #60a5fa; }}
+  .kb-meta {{ font-size: 0.72rem; color: #64748b; margin-bottom: 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+  .kb-salary {{ font-size: 0.72rem; color: #6ee7b7; }}
+  .kb-status {{ font-size: 0.68rem; font-weight: 600; }}
+  .kb-notes {{ font-size: 0.7rem; color: #94a3b8; font-style: italic; margin-top: 0.2rem; }}
+  .kb-apply {{ font-size: 0.72rem; color: #60a5fa; text-decoration: none; margin-top: 0.3rem; display: inline-block; }}
+  .kb-apply:hover {{ text-decoration: underline; }}
+
   @media (max-width: 768px) {{
     .summary {{ grid-template-columns: repeat(2, 1fr); }}
     .score-section {{ grid-template-columns: 1fr; }}
     .job-grid {{ grid-template-columns: 1fr; }}
+    .kb-board {{ flex-direction: column; }}
+    .kb-column {{ min-width: 100%; max-width: 100%; }}
     body {{ padding: 1rem; }}
   }}
 </style>
@@ -310,6 +450,19 @@ def generate_dashboard(output_path: str | None = None) -> str:
   <div class="stat-card stat-scored"><div class="stat-num">{scored}</div><div class="stat-label">Scored by LLM</div></div>
   <div class="stat-card stat-high"><div class="stat-num">{high_fit}</div><div class="stat-label">Strong Fit (7+)</div></div>
 </div>
+
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="switchTab('grid')">Grid View</button>
+  <button class="tab-btn" onclick="switchTab('kanban')">Kanban Board</button>
+</div>
+
+<div id="tab-kanban" class="tab-content">
+  <div class="kb-board">
+    {kanban_html}
+  </div>
+</div>
+
+<div id="tab-grid" class="tab-content active">
 
 <div class="filters">
   <span class="filter-label">Score:</span>
@@ -382,7 +535,16 @@ function applyFilters() {{
 }}
 
 applyFilters();
+
+function switchTab(tab) {{
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  event.target.classList.add('active');
+}}
 </script>
+
+</div><!-- /tab-grid -->
 
 </body>
 </html>"""

@@ -180,6 +180,12 @@ _ALL_COLUMNS: dict[str, str] = {
     "apply_duration_ms": "INTEGER",
     "apply_task_id": "TEXT",
     "verification_confidence": "TEXT",
+    # Kanban / manual tracking
+    "user_stage": "TEXT",
+    "user_notes": "TEXT",
+    # Inbox monitor
+    "inbox_status": "TEXT",
+    "inbox_updated_at": "TEXT",
 }
 
 

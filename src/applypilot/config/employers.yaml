@@ -303,3 +303,91 @@ employers:
     tenant: "canadiansolar"
     site_id: "CanadianSolar"
     base_url: "https://canadiansolar.wd5.myworkdayjobs.com"
+
+  # ── US Tech Giants ────────────────────────────────────────────────────
+
+  microsoft:
+    name: "Microsoft"
+    tenant: "microsoft"
+    site_id: "Microsoft_Careers"
+    base_url: "https://microsoft.wd5.myworkdayjobs.com"
+
+  amazon:
+    name: "Amazon"
+    tenant: "amazon"
+    site_id: "AmazonJobs"
+    base_url: "https://amazon.wd5.myworkdayjobs.com"
+
+  meta:
+    name: "Meta"
+    tenant: "meta"
+    site_id: "metacareers"
+    base_url: "https://meta.wd1.myworkdayjobs.com"
+
+  apple:
+    name: "Apple"
+    tenant: "apple"
+    site_id: "apple"
+    base_url: "https://apple.wd1.myworkdayjobs.com"
+
+  oracle:
+    name: "Oracle"
+    tenant: "oracle"
+    site_id: "Oracle_Careers"
+    base_url: "https://oracle.wd1.myworkdayjobs.com"
+
+  sap:
+    name: "SAP"
+    tenant: "sap"
+    site_id: "SAP_Careers"
+    base_url: "https://sap.wd12.myworkdayjobs.com"
+
+  ibm:
+    name: "IBM"
+    tenant: "ibm"
+    site_id: "IBM_Careers"
+    base_url: "https://ibm.wd5.myworkdayjobs.com"
+
+  vmware:
+    name: "VMware (Broadcom)"
+    tenant: "broadcom"
+    site_id: "VMware_Careers"
+    base_url: "https://broadcom.wd1.myworkdayjobs.com"
+
+  qualcomm:
+    name: "Qualcomm"
+    tenant: "qualcomm"
+    site_id: "External"
+    base_url: "https://qualcomm.wd5.myworkdayjobs.com"
+
+  # ── More Enterprise ───────────────────────────────────────────────────
+
+  visa:
+    name: "Visa"
+    tenant: "visa"
+    site_id: "Visa_Careers"
+    base_url: "https://visa.wd5.myworkdayjobs.com"
+
+  jpmorgan:
+    name: "JPMorgan Chase"
+    tenant: "jpmc"
+    site_id: "JPMC_Careers"
+    base_url: "https://jpmc.wd5.myworkdayjobs.com"
+
+  goldmansachs:
+    name: "Goldman Sachs"
+    tenant: "goldmansachs"
+    site_id: "GS_Careers"
+    base_url: "https://goldmansachs.wd1.myworkdayjobs.com"
+
+  deloitte:
+    name: "Deloitte"
+    tenant: "deloitte"
+    site_id: "Deloitte_Careers"
+    base_url: "https://deloitte.wd5.myworkdayjobs.com"
+
+  accenture:
+    name: "Accenture"
+    tenant: "accenture"
+    site_id: "Accenture_Careers"
+    base_url: "https://accenture.wd3.myworkdayjobs.com"
