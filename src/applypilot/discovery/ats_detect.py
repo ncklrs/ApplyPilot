@@ -11,7 +11,7 @@ import re
 import urllib.request
 import urllib.error
 
-from applypilot.discovery.utils import setup_proxy
+from applypilot.discovery.utils import urlopen as proxy_urlopen
 
 log = logging.getLogger(__name__)
 
@@ -42,10 +42,9 @@ _WORKDAY_PATTERNS = [
 
 def _fetch_page(url: str, timeout: int = 15) -> str:
     """Fetch a URL and return its text content."""
-    setup_proxy()
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with proxy_urlopen(req, timeout=timeout) as resp:
             return resp.read().decode("utf-8", errors="replace")
     except urllib.error.URLError as e:
         log.debug("Failed to fetch %s: %s", url, e)
@@ -57,7 +56,7 @@ def _probe_greenhouse(token: str) -> bool:
     url = f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs?per_page=1"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": UA})
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with proxy_urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
             return "jobs" in data
     except Exception:
@@ -69,7 +68,7 @@ def _probe_lever(slug: str) -> bool:
     url = f"https://api.lever.co/v0/postings/{slug}?limit=1&mode=json"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": UA})
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with proxy_urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
             return isinstance(data, list)
     except Exception:
@@ -85,7 +84,7 @@ def _probe_ashby(board_id: str) -> bool:
             url, data=data, method="POST",
             headers={"User-Agent": UA, "Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with proxy_urlopen(req, timeout=10) as resp:
             result = json.loads(resp.read())
             return "jobs" in result or "data" in result
     except Exception:

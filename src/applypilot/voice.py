@@ -185,7 +185,7 @@ def generate_pitch(job: dict, profile: dict | None = None) -> dict:
     audio_path = PITCH_DIR / f"{slug}_pitch.mp3"
     try:
         synthesize_audio(script, audio_path)
-    except (ValueError, httpx.HTTPStatusError) as e:
+    except (ValueError, httpx.HTTPStatusError, httpx.RequestError) as e:
         log.warning("Audio synthesis failed (pitch text saved): %s", e)
         return {
             "script": script,

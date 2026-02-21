@@ -98,10 +98,12 @@ def _extract_skills_match(job: dict, profile: dict) -> list[dict]:
 
 
 def _make_slug(job: dict) -> str:
-    """Generate a URL-safe slug from company name."""
+    """Generate a URL-safe slug from company name and job title."""
     site = job.get("site", "company")
-    slug = re.sub(r"[^\w\s-]", "", site).strip().lower().replace(" ", "-")
-    return slug or "company"
+    title = job.get("title", "role")
+    combined = f"{site}-{title}"
+    slug = re.sub(r"[^\w\s-]", "", combined).strip().lower().replace(" ", "-")
+    return (slug or "company")[:80]
 
 
 def generate_landing_page(

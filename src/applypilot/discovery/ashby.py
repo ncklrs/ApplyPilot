@@ -169,8 +169,8 @@ def search_employer(
                     detail_html = detail.get("descriptionHtml", "")
                     if detail_html:
                         description = strip_html(detail_html)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug("Failed to fetch Ashby job detail for %s: %s", posting_id, e)
 
         # Build apply URL
         apply_url = job.get("applyUrl", "")

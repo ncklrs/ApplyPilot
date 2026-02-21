@@ -33,9 +33,12 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
+    has_library = False
+
     # Try PyPDF2 first (lighter dependency)
     try:
         from PyPDF2 import PdfReader
+        has_library = True
         reader = PdfReader(str(pdf_path))
         text_parts = []
         for page in reader.pages:
@@ -51,11 +54,18 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
     # Try pdfminer.six
     try:
         from pdfminer.high_level import extract_text as pdfminer_extract
+        has_library = True
         text = pdfminer_extract(str(pdf_path))
         if text.strip():
             return _clean_extracted_text(text)
     except ImportError:
         pass
+
+    if has_library:
+        raise ValueError(
+            f"Could not extract text from {pdf_path.name}. "
+            "The PDF may be image-only (scanned). Try OCR or provide a text version."
+        )
 
     raise ImportError(
         "No PDF extraction library found. Install one of:\n"
@@ -172,7 +182,7 @@ def _clean_extracted_text(text: str) -> str:
 def convert_resume(input_path: Path, output_path: Path | None = None) -> str:
     """Auto-detect format and convert a resume to plain text.
 
-    Supports: .pdf, .docx, .doc, .md, .markdown, .txt
+    Supports: .pdf, .docx, .md, .markdown, .txt
 
     Args:
         input_path: Path to the resume file.
@@ -193,8 +203,13 @@ def convert_resume(input_path: Path, output_path: Path | None = None) -> str:
 
     if suffix == ".pdf":
         text = extract_text_from_pdf(input_path)
-    elif suffix in (".docx", ".doc"):
+    elif suffix == ".docx":
         text = extract_text_from_docx(input_path)
+    elif suffix == ".doc":
+        raise ValueError(
+            f"Legacy .doc format is not supported. "
+            "Please save as .docx and try again."
+        )
     elif suffix in (".md", ".markdown"):
         text = convert_markdown_to_text(input_path)
     elif suffix == ".txt":

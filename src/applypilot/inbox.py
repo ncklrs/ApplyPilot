@@ -260,20 +260,38 @@ def scan_inbox(
         matches = []
 
         for msg_id in ids:
+            # Fetch headers first (lightweight) to classify by subject
+            _, hdr_data = imap.fetch(msg_id, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+            if not hdr_data or not hdr_data[0]:
+                continue
+
+            hdr_raw = hdr_data[0][1]
+            if not isinstance(hdr_raw, bytes):
+                continue
+
+            hdr_msg = email.message_from_bytes(hdr_raw)
+            subject = _decode_subject(hdr_msg)
+            sender_domain = _extract_sender_domain(hdr_msg)
+
+            # Quick classify by subject only — skip full body fetch for non-matches
+            classification = classify_email(subject, "")
+            if not classification:
+                continue
+
+            # Promising email — fetch full body for deeper classification
             _, data = imap.fetch(msg_id, "(RFC822)")
             if not data or not data[0]:
                 continue
 
             raw = data[0][1]
-            if isinstance(raw, bytes):
-                msg = email.message_from_bytes(raw)
-            else:
+            if not isinstance(raw, bytes):
                 continue
 
-            subject = _decode_subject(msg)
+            msg = email.message_from_bytes(raw)
             body = _get_body(msg)
             sender_domain = _extract_sender_domain(msg)
 
+            # Re-classify with full body for more accurate result
             classification = classify_email(subject, body)
             if not classification:
                 continue
@@ -281,7 +299,7 @@ def scan_inbox(
             # Try to match with jobs in DB
             matched_jobs = match_to_jobs(sender_domain)
 
-            date_str = msg.get("Date", "")
+            date_str = msg.get("Date", "") or hdr_msg.get("Date", "")
             parsed_date = email.utils.parsedate_to_datetime(date_str) if date_str else None
 
             matches.append({

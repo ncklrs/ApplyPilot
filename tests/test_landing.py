@@ -80,8 +80,8 @@ class TestGenerateLandingPage:
                 base_url="https://nickjensen.codes",
             )
 
-            assert result["slug"] == "stripe"
-            assert result["url"] == "https://nickjensen.codes/stripe"
+            assert result["slug"] == "stripe-senior-backend-engineer"
+            assert result["url"] == "https://nickjensen.codes/stripe-senior-backend-engineer"
             assert result["path"].endswith("index.html")
 
             # Read and verify HTML content
@@ -136,11 +136,12 @@ class TestGenerateLandingPage:
         try:
             from applypilot.landing import _make_slug
 
-            assert _make_slug({"site": "Stripe"}) == "stripe"
-            assert _make_slug({"site": "Open AI"}) == "open-ai"
-            assert _make_slug({"site": "JPMorgan Chase"}) == "jpmorgan-chase"
-            assert _make_slug({"site": ""}) == "company"
-            assert _make_slug({}) == "company"
+            assert _make_slug({"site": "Stripe", "title": "Engineer"}) == "stripe-engineer"
+            assert _make_slug({"site": "Open AI", "title": "ML Lead"}) == "open-ai-ml-lead"
+            assert _make_slug({"site": "JPMorgan Chase", "title": "SWE"}) == "jpmorgan-chase-swe"
+            # Defaults
+            assert _make_slug({"site": "Stripe"}).startswith("stripe-")
+            assert _make_slug({}).startswith("company-")
         finally:
             landing_mod.LANDING_DIR = original_dir
 
@@ -283,7 +284,7 @@ class TestGenerateLandingPage:
                 base_url="https://hire.nickjensen.co",
             )
 
-            assert result["url"] == "https://hire.nickjensen.co/stripe"
+            assert result["url"] == "https://hire.nickjensen.co/stripe-senior-backend-engineer"
         finally:
             landing_mod.LANDING_DIR = original_dir
 

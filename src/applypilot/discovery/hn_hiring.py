@@ -16,7 +16,7 @@ import urllib.error
 from datetime import datetime, timezone
 
 from applypilot.database import get_connection, init_db
-from applypilot.discovery.utils import setup_proxy, strip_html
+from applypilot.discovery.utils import strip_html, urlopen as proxy_urlopen
 
 log = logging.getLogger(__name__)
 
@@ -31,10 +31,9 @@ _HTML_TAG = re.compile(r"<[^>]+>")
 
 def _fetch_json(url: str, timeout: int = 15) -> dict | None:
     """Fetch a URL and parse as JSON."""
-    setup_proxy()
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with proxy_urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read())
     except (urllib.error.URLError, json.JSONDecodeError) as e:
         log.warning("Failed to fetch %s: %s", url, e)

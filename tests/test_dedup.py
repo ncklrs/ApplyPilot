@@ -98,6 +98,7 @@ class TestFindDuplicates:
         dupes = find_duplicates(conn, title_threshold=0.8, company_threshold=0.7)
         # Indeed and LinkedIn are different company names so no match expected
         # This is correct behavior -- dedup is within same company
+        assert len(dupes) == 0
 
     def test_no_duplicates_in_empty_db(self, tmp_path):
         db_path = tmp_path / "test.db"

@@ -295,8 +295,10 @@ def cover_via_agent(
             parts = output.split("```")
             if len(parts) >= 3:
                 output = parts[1]
-                if output.startswith("text") or output.startswith("\n"):
-                    output = output.lstrip("text").strip()
+                if output.startswith("text"):
+                    output = output.removeprefix("text").strip()
+                elif output.startswith("\n"):
+                    output = output.strip()
 
         # Find "Dear" if there's preamble
         dear_idx = output.find("Dear")
